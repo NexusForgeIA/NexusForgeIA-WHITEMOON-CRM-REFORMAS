@@ -135,6 +135,7 @@ function leadVars(l, extra={}){
   const v = {nombre:l.nombre.split(' ')[0], comercial:EMPRESA.comercial, empresa:EMPRESA.nombre, tipo_obra:(TIPOS[l.tipo]||'').toLowerCase(), direccion:l.dir, enlace_resena:EMPRESA.resena};
   if(l.visita){ v.fecha_visita = fmtDL(addDays(l.visita.d)); v.hora_visita = l.visita.h; v.tecnico = l.visita.tec; }
   if(l.prLink) v.enlace_presupuesto = l.prLink;
+  else { const pr = S.pres.find(p=>p.leadId===l.id); if(pr) v.enlace_presupuesto = `https://${EMPRESA.web}/p/${pr.num.toLowerCase()}-demo`; } // S.pres: el más reciente primero
   return Object.assign(v, extra);
 }
 
