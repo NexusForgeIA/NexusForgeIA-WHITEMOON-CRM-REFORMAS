@@ -194,7 +194,7 @@ function go(id, opts){
   const m = $('#main');
   m.innerHTML = `<div class="top"><div><h1>${v.title}</h1><p>${esc(v.sub())}</p></div><span class="live"><i></i>flujo activo · ${EMPRESA.nombre}</span></div><div id="view"></div>`;
   ({hoy:vHoy,embudo:vEmbudo,presupuestos:vPres,obras:vObras,facturas:vFacturas,finanzas:vFinanzas,ajustes:vAjustes})[id](opts||{});
-  try{ history.replaceState(null,'','#'+id); }catch(e){}
+  try{ history.replaceState(null,'', id==='hoy' ? location.pathname+location.search : '#'+id); }catch(e){}
   window.scrollTo(0,0);
 }
 document.addEventListener('click', e=>{
