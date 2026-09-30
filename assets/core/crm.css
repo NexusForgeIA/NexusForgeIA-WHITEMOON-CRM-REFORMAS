@@ -257,3 +257,24 @@ body{padding-top:var(--cta-h)}
   .cta-bar{justify-content:space-between;font-size:12px}
   .cta-bar .cta-more{display:none}
 }
+
+/* ---------- presupuestos en la ficha del cliente ---------- */
+.fic-pr{display:flex;justify-content:space-between;align-items:center;gap:8px 12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--line)}
+.fic-pr:first-child{border-top:0;padding-top:0}
+.fic-pr small{font-size:12px}
+
+/* ---------- impresión del presupuesto (Descargar PDF) ---------- */
+#print-root{display:none}
+@media print{
+  @page{size:A4;margin:14mm 12mm}
+  :root{color-scheme:light}
+  html,body{background:#fff!important;padding:0!important;margin:0}
+  body>*:not(#print-root){display:none!important}
+  #print-root{display:block}
+  #print-root .client-doc{background:#fff;border-radius:0;padding:0;font-size:12px}
+  #print-root .tbl-wrap{overflow:visible;border-radius:0}
+  #print-root thead{display:table-header-group}
+  #print-root tr,#print-root .cd-total{break-inside:avoid;page-break-inside:avoid}
+  #print-root .cd-cap{break-after:avoid;page-break-after:avoid}
+  #print-root .cd-cap td{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}

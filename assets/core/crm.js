@@ -299,6 +299,7 @@ function askMotivo(l){
 function openLead(id){
   const l = S.leads.find(x=>x.id===id); if(!l) return;
   const tl = (S.timeline[id]||[{t:'Hace 2 días',x:'Lead creado · origen '+l.origen}]);
+  const prs = S.pres.filter(p=>p.leadId===l.id);
   modal(`<header><h2>${esc(l.nombre)} <span class="badge">${PH[l.fase].n}</span></h2><button class="x" data-close aria-label="Cerrar">×</button></header>
   <div class="body"><div class="fic-grid">
     <div>
@@ -313,6 +314,8 @@ function openLead(id){
         ${l.motivo?`<dt>Motivo pérdida</dt><dd>${esc(l.motivo)}</dd>`:''}
       </dl>
       <p class="muted" style="margin:14px 0 0">${esc(l.desc||'')}</p>
+      <h3 class="h2" style="font-size:13px;margin-top:16px">Presupuestos</h3>
+      ${prs.length?`<div class="fic-pres">${prs.map((p,i)=>`<div class="fic-pr"><div><b class="num">${esc(p.num)}</b> <span class="badge ${p.estado==='aceptado'?'g':'a'}">${esc(p.estado)}</span><br><small class="muted">${fmtD(addDays(p.doc.fecha))} · <span class="num">${eur2(p.total)}</span></small></div><div class="row" style="gap:6px"><button class="btn sm" data-pver="${i}">${I.eye}Ver</button><button class="btn sm" data-ppdf="${i}">${I.pres}Descargar PDF</button></div></div>`).join('')}</div>`:'<p class="faint" style="margin:0;font-size:12.5px">Aún no hay presupuestos</p>'}
       <label class="f" style="margin-top:16px">Mover a fase<select class="in" id="fx-fase">${[...PHASES,...EXITS].map(p=>`<option value="${p.id}" ${p.id===l.fase?'selected':''}>${p.n}</option>`).join('')}</select></label>
     </div>
     <div><h3 class="h2" style="font-size:13px">Línea de tiempo</h3><ul class="timeline">${tl.slice().reverse().map(e=>`<li class="${e.k||''}"><time>${esc(e.t)}</time>${esc(e.x)}</li>`).join('')}</ul></div>
@@ -324,6 +327,8 @@ function openLead(id){
   </footer>`);
   $('#fx-fase').onchange=e=>{ const v=e.target.value; closeModal(); moveLead(l.id,v); if(current!=='embudo'&&current==='hoy') vHoy(); };
   $('#fx-wa').onclick=()=>openWA({lead:l});
+  $$('[data-pver]').forEach(b=>b.onclick=()=>verDoc(prs[+b.dataset.pver].doc, false));
+  $$('[data-ppdf]').forEach(b=>b.onclick=()=>printDoc(prs[+b.dataset.ppdf].doc));
   $('#fx-pres').onclick=()=>{ closeModal(); go('presupuestos',{leadId:l.id}); };
 }
 
@@ -437,7 +442,7 @@ function drawDoc(){
       <td class="n num" data-imp="${x.i}">${eur2(x.imp)}</td></tr>`; }).join('');
   $('#doc').innerHTML = `
     <div class="doc-head"><div><span class="ref">${P.num} · ${est?'ESTIMACIÓN PREVIA':'PRESUPUESTO'}</span><h2>${TIPOS[P.tipo]} · ${esc(P.cli.nombre||'Cliente sin nombre')}</h2><small class="muted">${esc(P.cli.dir||'Sin dirección')} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días · plazo estimado ${TARIFA.plazos[P.tipo]}</small></div>
-    <div class="row"><button class="btn" id="d-view">${I.eye}Vista del cliente</button><button class="btn wa" id="d-wa">${I.wa}Enviar por WhatsApp</button></div></div>
+    <div class="row"><button class="btn" id="d-view">${I.eye}Vista del cliente</button><button class="btn" id="d-pdf">${I.pres}Descargar PDF</button><button class="btn wa" id="d-wa">${I.wa}Enviar por WhatsApp</button></div></div>
     <p class="faint" style="font-size:12px;margin:0 0 10px">Todo se ha rellenado solo con la tarifa. Puedes cambiar cualquier cantidad o precio antes de enviarlo.</p>
     <div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Ud.</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th></tr></thead><tbody>${rows}</tbody></table></div>
     <div class="totals" id="d-tot"></div>
@@ -448,6 +453,7 @@ function drawDoc(){
   $$('[data-pr]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.pr]=P.over[i.dataset.pr]||{}).pr=parseFloat(i.value)||0; refreshLine(i.dataset.pr); });
   $$('[data-on]').forEach(i=>i.onchange=()=>{ P.off[i.dataset.on]=!i.checked; i.closest('tr').classList.toggle('li-off',!i.checked); drawTotals(); });
   $('#d-view').onclick=clientView;
+  $('#d-pdf').onclick=()=>printDoc(snapP());
   $('#d-wa').onclick=sendPres;
 }
 function refreshLine(i){ const x=lines().find(l=>String(l.i)===String(i)); if(x) $(`[data-imp="${i}"]`).textContent=eur2(x.imp); drawTotals(); }
@@ -456,23 +462,46 @@ function drawTotals(){
   $('#d-tot').innerHTML = `<span class="muted">Base imponible</span><span class="num">${eur2(T.base)}</span><span class="muted">IVA ${P.iva} %</span><span class="num">${eur2(T.iva)}</span><span>Total</span><span class="big num">${est?`${eur(T.total*.9)} – ${eur(T.total*1.15)}`:eur2(T.total)}</span>`;
   $('#d-hitos').innerHTML = EMPRESA.hitos.map(h=>`<div class="hito"><small>${h.n} · ${h.p} %</small><b>${est?'—':eur2(T.total*h.p/100)}</b></div>`).join('');
 }
-function clientView(){
-  const L=lines().filter(x=>x.on), T=totals(L); let cap='';
-  const est=P.modo==='estimacion';
-  modal(`<header><h2>Lo que ve el cliente al abrir el enlace</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
-  <div class="body"><div class="client-doc">
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div><h3>${EMPRESA.nombre}</h3><span class="cd-muted">${P.num} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días</span></div><div style="text-align:right"><b>${esc(P.cli.nombre||'Cliente')}</b><br><span class="cd-muted">${esc(P.cli.dir||'')}</span></div></div>
+/* ---- copia fija del presupuesto: se guarda al enviar o aceptar y no cambia aunque cambie la tarifa ----
+   fecha = días respecto a hoy, como el resto de datos de ejemplo */
+function snapP(){
+  const L=lines(), T=totals(L);
+  return {num:P.num, cliente:{...P.cli}, tipo:P.tipo, modo:P.modo, cal:P.cal, iva:P.iva, params:{...P.params}, fecha:0, validez:EMPRESA.validez, plazo:TARIFA.plazos[P.tipo], hitos:EMPRESA.hitos.map(h=>({...h})),
+    lineas:L.map(x=>({cap:x.cap,n:x.n,q:x.q,u:x.u,pr:x.pr,imp:x.imp,on:x.on})), base:T.base, cuota:T.iva, total:T.total};
+}
+function docCliente(d, conAceptar){
+  const L=d.lineas.filter(x=>x.on); let cap='';
+  const est=d.modo==='estimacion';
+  return `<div class="client-doc">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div><h3>${EMPRESA.nombre}</h3><span class="cd-muted">${d.num} · ${fmtD(addDays(d.fecha))} · válido ${d.validez} días</span></div><div style="text-align:right"><b>${esc(d.cliente.nombre||'Cliente')}</b><br><span class="cd-muted">${esc(d.cliente.dir||'')}</span></div></div>
     <div class="tbl-wrap"><table><thead><tr><th>Concepto</th><th class="n">Cant.</th><th class="n">Importe</th></tr></thead><tbody>${L.map(x=>{let h='';if(x.cap!==cap){cap=x.cap;h+=`<tr class="cd-cap"><td colspan="3">${esc(cap)}</td></tr>`;}return h+`<tr><td>${esc(x.n)}</td><td class="n num">${x.q} ${x.u}</td><td class="n num">${eur2(x.imp)}</td></tr>`;}).join('')}</tbody></table></div>
-    <div class="cd-total"><span>Total (IVA ${P.iva} % incl.)</span><span class="num">${est?`${eur(T.total*.9)} – ${eur(T.total*1.15)}`:eur2(T.total)}</span></div>
-    <p class="cd-muted" style="font-size:12.5px">Forma de pago: ${EMPRESA.hitos.map(h=>`${h.n.toLowerCase()} (${h.p} %)`).join(', ')}. Plazo estimado: ${TARIFA.plazos[P.tipo]}.</p>
-    ${est?'<p class="cd-muted" style="font-size:12.5px"><b>Estimación orientativa.</b> El importe final se cierra después de la visita técnica.</p>':`
+    <div class="cd-total"><span>Total (IVA ${d.iva} % incl.)</span><span class="num">${est?`${eur(d.total*.9)} – ${eur(d.total*1.15)}`:eur2(d.total)}</span></div>
+    <p class="cd-muted" style="font-size:12.5px">Forma de pago: ${d.hitos.map(h=>`${h.n.toLowerCase()} (${h.p} %)`).join(', ')}. Plazo estimado: ${d.plazo}.</p>
+    ${est?'<p class="cd-muted" style="font-size:12.5px"><b>Estimación orientativa.</b> El importe final se cierra después de la visita técnica.</p>':conAceptar?`
     <div class="accept"><b>Aceptar presupuesto</b>
-      <input type="text" id="acc-n" placeholder="Escribe tu nombre completo" value="${esc(P.cli.nombre)}" aria-label="Nombre completo">
+      <input type="text" id="acc-n" placeholder="Escribe tu nombre completo" value="${esc(d.cliente.nombre)}" aria-label="Nombre completo">
       <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px"><input type="checkbox" id="acc-c"> He leído y acepto el presupuesto y las condiciones.</label>
       <button class="btn primary" id="acc-ok">Aceptar presupuesto</button>
-      <small class="cd-muted">Se guardan fecha, hora y versión aceptada como justificante.</small></div>`}
-  </div></div>`,'wide');
-  if(!est) $('#acc-ok').onclick=()=>{ if(!$('#acc-c').checked||!$('#acc-n').value.trim()){ toast('Falta el nombre o marcar la casilla'); return; } aceptar(); };
+      <small class="cd-muted">Se guardan fecha, hora y versión aceptada como justificante.</small></div>`:''}
+  </div>`;
+}
+function verDoc(d, conAceptar){
+  modal(`<header><h2>Lo que ve el cliente al abrir el enlace</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
+  <div class="body">${docCliente(d, conAceptar)}</div>
+  <footer><button class="btn" id="cv-pdf">${I.pres}Descargar PDF</button></footer>`,'wide');
+  $('#cv-pdf').onclick=()=>printDoc(d);
+}
+function clientView(){
+  const d=snapP();
+  verDoc(d, true);
+  if(d.modo!=='estimacion') $('#acc-ok').onclick=()=>{ if(!$('#acc-c').checked||!$('#acc-n').value.trim()){ toast('Falta el nombre o marcar la casilla'); return; } aceptar(); };
+}
+function printDoc(d){
+  let root=$('#print-root'); if(!root){ root=document.createElement('div'); root.id='print-root'; document.body.appendChild(root); }
+  root.innerHTML=docCliente(d, false);
+  const prev=document.title; document.title=`${d.num} - ${d.cliente.nombre||'Cliente'}`;
+  window.addEventListener('afterprint',()=>{ document.title=prev; root.innerHTML=''; },{once:true});
+  window.print();
 }
 function sendPres(){
   const T=totals(lines());
@@ -481,7 +510,7 @@ function sendPres(){
   let l = P.leadId ? S.leads.find(x=>x.id===P.leadId) : null;
   if(!l){ l={id:++seq,nombre:P.cli.nombre,tel:P.cli.tel,pob:'',dir:P.cli.dir,tipo:P.tipo,origen:'Llamada',fase:'pres_prep',score:65,importe:0,desc:''}; S.leads.unshift(l); P.leadId=l.id; }
   l.prLink=link; l.importe=Math.round(T.total);
-  S.pres=S.pres.filter(p=>p.num!==P.num); S.pres.unshift({num:P.num,cliente:P.cli.nombre,tipo:P.tipo,total:T.total,estado:'enviado',leadId:l.id});
+  S.pres=S.pres.filter(p=>p.num!==P.num); S.pres.unshift({num:P.num,cliente:P.cli.nombre,tipo:P.tipo,total:T.total,estado:'enviado',leadId:l.id,doc:snapP()});
   openWA({lead:l,tpl:'presenv'});
   if(['nuevo','contactado','visita_ag','visita_ok','pres_prep'].includes(l.fase)){ const from=PH[l.fase].n; l.fase='pres_env'; l.enviadoHace=0; log(l.id,`Fase: ${from} → Presupuesto enviado`,'ok'); }
   log(l.id,`Presupuesto ${P.num} generado (${eur(T.total)})`,'ok');
@@ -489,7 +518,7 @@ function sendPres(){
 
 /* ---- aceptación → flujo automático (mini-ERP) ---- */
 function aceptar(){
-  const L=lines().filter(x=>x.on), T=totals(L);
+  const L=lines().filter(x=>x.on), T=totals(L), doc=snapP();
   let l = P.leadId ? S.leads.find(x=>x.id===P.leadId) : null;
   if(!l){ l={id:++seq,nombre:P.cli.nombre||'Cliente',tel:'',pob:'',dir:P.cli.dir,tipo:P.tipo,origen:'Llamada',fase:'pres_env',score:70,importe:Math.round(T.total),desc:''}; S.leads.unshift(l); P.leadId=l.id; }
   const obraId = `O-0${S.nextObra++}`; const prNum=P.num; S.nextPR++;
@@ -527,7 +556,7 @@ function aceptar(){
     const from=PH[l.fase].n; l.fase='aceptado'; l.importe=Math.round(T.total);
     log(l.id,`Presupuesto ${prNum} aceptado online`,'ok'); log(l.id,`Fase: ${from} → Aceptado · obra ${obraId}`,'ok');
     S.obras.unshift({id:obraId,cliente:l.nombre,tipo:P.tipo,pob:l.pob||'—',avance:0,presupuesto:Math.round(T.total),matPres:Math.round(matPres),matReal:0,horas:0,costeHora:24,subc:0,hitos:EMPRESA.hitos.map(h=>({n:h.n,imp:T.total*h.p/100,cob:false})),fin:60,nueva:true});
-    S.pres=S.pres.filter(p=>p.num!==prNum); S.pres.unshift({num:prNum,cliente:l.nombre,tipo:P.tipo,total:T.total,estado:'aceptado',leadId:l.id});
+    S.pres=S.pres.filter(p=>p.num!==prNum); S.pres.unshift({num:prNum,cliente:l.nombre,tipo:P.tipo,total:T.total,estado:'aceptado',leadId:l.id,doc});
     (S.extraTasks=S.extraTasks||[]).push({id:'senal'+obraId,lead:l,dot:'g',t:`Enviar solicitud de señal · ${l.nombre}`,s:`${eur(senal)} · obra ${obraId}`,tpl:'hito'});
     const wa=$('#fl-wa'), ob=$('#fl-obras'); if(wa){ wa.disabled=false; wa.onclick=()=>openWA({lead:l,tpl:'hito',extra:{importe_hito:eur(senal),concepto_pago:EMPRESA.hitos[0].n.toLowerCase()},taskId:'senal'+obraId}); }
     if(ob){ ob.disabled=false; ob.onclick=()=>{closeModal();go('obras');}; }
