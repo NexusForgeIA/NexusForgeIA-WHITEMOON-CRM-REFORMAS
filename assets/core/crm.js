@@ -34,6 +34,9 @@ const I = {
 /* =================== configuración, tarifa y datos =================== */
 const EMPRESA = window.CRM_EMPRESA;
 const TARIFA = window.CRM_TARIFA;
+TARIFA.extra = TARIFA.extra || {};               // partidas propias de la empresa: {tipo:[{id:'custom.…', cap, n, u, cantidad:'1'|'mano'|<parámetro>, mat}]}
+TARIFA.desactivadas = TARIFA.desactivadas || {}; // {id:true}: no salen en presupuestos nuevos (no se borran)
+TARIFA.nombres = TARIFA.nombres || {};           // {id:'nombre propio'} para renombrar una partida
 const PHASES = [
   {id:'nuevo',n:'Nuevo',p:.05},{id:'contactado',n:'Contactado',p:.10},{id:'visita_ag',n:'Visita agendada',p:.20},
   {id:'visita_ok',n:'Visita hecha',p:.30},{id:'pres_prep',n:'Presupuesto en preparación',p:.35},{id:'pres_env',n:'Presupuesto enviado',p:.45},
@@ -396,21 +399,41 @@ let P = null;
 function newP(leadId){
   const l = leadId ? S.leads.find(x=>x.id===leadId) : null;
   const tipo = l ? l.tipo : 'bano';
-  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:l?fmtTel(normTel(l.tel)):'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
+  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:l?fmtTel(normTel(l.tel)):'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, extra:[], xseq:0, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
 }
+/* over[k] = cambios de ese presupuesto (q, pr, n) · off[k] = true si la partida está desmarcada (no va en el presupuesto)
+   extra = partidas añadidas a mano: {k, id?(de la tarifa), cap, n, u, q, pr?(libre), mat} */
+/* partidas de un tipo = plantilla del núcleo + las propias de la empresa (TARIFA.extra), con su nombre propio si lo tiene */
+function todas(tipo){
+  const propias = (TARIFA.extra[tipo]||[]).map(x=>({id:x.id,cap:x.cap,n:x.n,u:x.u,mat:x.mat?1:0,propia:1,mano:x.cantidad==='mano'?1:0,
+    q:x.cantidad==='1'?()=>1:x.cantidad==='mano'?()=>0:p=>+p[x.cantidad]||0}));
+  return CAT[tipo].items.concat(propias).map(it=>TARIFA.nombres[it.id]!==undefined?{...it,n:TARIFA.nombres[it.id]}:it);
+}
+function plantilla(tipo){ return todas(tipo).filter(it=>!TARIFA.desactivadas[it.id]); }
+function nombrePartida(it, tipo){ return typeof it.n==='function' ? it.n(defParams(tipo)) : it.n; }
+function soloNombres(){ P.over=Object.fromEntries(Object.entries(P.over).filter(([,o])=>o.n!==undefined).map(([k,o])=>[k,{n:o.n}])); }
 function defParams(tipo){ return Object.fromEntries(CAT[tipo].params.map(p=>[p.k,p.v])); }
 function lines(){
-  const c = CAT[P.tipo]; const out=[];
-  c.items.forEach((it,i)=>{
-    const q0 = +it.q(P.params) || 0; if(q0<=0 && !P.over[i]) return;
+  const out=[];
+  plantilla(P.tipo).forEach(it=>{
+    const k = it.id;
+    const q0 = +it.q(P.params) || 0; if(q0<=0 && !P.over[k] && !it.mano) return;
     const pr0 = (TARIFA.partidas[it.id]||[])[P.cal];
-    const o = P.over[i]||{};
+    const o = P.over[k]||{};
     const q = o.q!==undefined ? o.q : Math.round(q0*10)/10;
     const pr = o.pr!==undefined ? o.pr : pr0;
-    const on = !P.off[i];
-    out.push({i,cap:it.cap,n:typeof it.n==='function'?it.n(P.params):it.n,u:it.u,q,pr,imp:q*pr,on,opt:!!it.opt,mat:!!it.mat});
+    const on = k in P.off ? !P.off[k] : !it.mano; // las «a mano» llegan desmarcadas
+    out.push({i:k,cap:it.cap,n:o.n!==undefined?o.n:(typeof it.n==='function'?it.n(P.params):it.n),u:it.u,q,pr,imp:q*pr,on,opt:!!it.opt,mat:!!it.mat});
   });
-  return out;
+  P.extra.forEach(x=>{
+    const o = P.over[x.k]||{};
+    const q = o.q!==undefined ? o.q : x.q;
+    const pr = o.pr!==undefined ? o.pr : x.id ? (TARIFA.partidas[x.id]||[])[P.cal] : x.pr;
+    out.push({i:x.k,cap:x.cap,n:o.n!==undefined?o.n:x.n,u:x.u,q,pr,imp:q*pr,on:x.k in P.off?!P.off[x.k]:true,opt:false,mat:!!x.mat});
+  });
+  // las añadidas van al final de su capítulo; si el capítulo no existe, capítulo nuevo al final
+  const caps=[...new Set(out.map(x=>x.cap))];
+  return caps.flatMap(c=>out.filter(x=>x.cap===c));
 }
 function totals(L){ const base=L.filter(x=>x.on).reduce((a,x)=>a+x.imp,0); const iva=base*P.iva/100; return {base,iva,total:base+iva}; }
 function vPres(opts){
@@ -442,9 +465,9 @@ function vPres(opts){
   </div>`;
   $('#p-lead').onchange=e=>{ newP(e.target.value?+e.target.value:null); vPres({}); };
   $$('[data-cli]').forEach(i=>i.oninput=()=>{P.cli[i.dataset.cli]=i.value;});
-  $('#p-tipo').onchange=e=>{ P.tipo=e.target.value; P.params=defParams(P.tipo); P.over={}; P.off={}; vPres({}); };
-  $$('[data-par]').forEach(i=>i.oninput=()=>{ P.params[i.dataset.par]= i.type==='number' ? (parseFloat(i.value)||0) : i.value; P.over={}; drawDoc(); });
-  $$('[data-cal]').forEach(b=>b.onclick=()=>{ P.cal=+b.dataset.cal; P.over={}; $$('[data-cal]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
+  $('#p-tipo').onchange=e=>{ P.tipo=e.target.value; P.params=defParams(P.tipo); P.over={}; P.off={}; P.extra=[]; vPres({}); };
+  $$('[data-par]').forEach(i=>i.oninput=()=>{ P.params[i.dataset.par]= i.type==='number' ? (parseFloat(i.value)||0) : i.value; soloNombres(); drawDoc(); });
+  $$('[data-cal]').forEach(b=>b.onclick=()=>{ P.cal=+b.dataset.cal; soloNombres(); $$('[data-cal]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
   $$('[data-modo]').forEach(b=>b.onclick=()=>{ P.modo=b.dataset.modo; $$('[data-modo]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
   $('#p-iva').onchange=e=>{P.iva=+e.target.value;drawDoc();};
   drawDoc();
@@ -452,8 +475,8 @@ function vPres(opts){
 function drawDoc(){
   const L = lines(); const T = totals(L); let cap='';
   const est = P.modo==='estimacion';
-  const rows = L.map(x=>{ let h=''; if(x.cap!==cap){cap=x.cap;h+=`<tr class="cap"><td colspan="5">${esc(cap)}</td></tr>`;}
-    return h+`<tr class="${x.on?'':'li-off'}"><td>${x.opt?`<input type="checkbox" aria-label="Incluir partida" data-on="${x.i}" ${x.on?'checked':''}> `:''}${esc(x.n)}</td><td>${x.u}</td>
+  const rows = L.map(x=>{ let h=''; if(x.cap!==cap){cap=x.cap;h+=`<tr class="cap"><td colspan="6">${esc(cap)}</td></tr>`;}
+    return h+`<tr class="${x.on?'':'li-off'}"><td><div class="li-name"><input type="checkbox" aria-label="Incluir partida" data-on="${x.i}" ${x.on?'checked':''}><input class="in li-n" data-n="${x.i}" value="${esc(x.n)}" aria-label="Descripción de la partida"></div></td><td>${x.u}</td>
       <td class="n"><input class="in li-in num" type="number" step="0.1" min="0" data-q="${x.i}" value="${x.q}" aria-label="Cantidad"></td>
       <td class="n"><input class="in li-in num" type="number" step="1" min="0" data-pr="${x.i}" value="${x.pr}" aria-label="Precio unitario"></td>
       <td class="n num" data-imp="${x.i}">${eur2(x.imp)}</td></tr>`; }).join('');
@@ -461,17 +484,70 @@ function drawDoc(){
     <div class="doc-head"><div><span class="ref">${P.num} · ${est?'ESTIMACIÓN PREVIA':'PRESUPUESTO'}</span><h2>${TIPOS[P.tipo]} · ${esc(P.cli.nombre||'Cliente sin nombre')}</h2><small class="muted">${esc(P.cli.dir||'Sin dirección')} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días · plazo estimado ${TARIFA.plazos[P.tipo]}</small></div>
     <div class="row"><button class="btn" id="d-view">${I.eye}Vista del cliente</button><button class="btn" id="d-pdf">${I.pres}Descargar PDF</button><button class="btn wa" id="d-wa">${I.wa}Enviar por WhatsApp</button></div></div>
     <p class="faint" style="font-size:12px;margin:0 0 10px">Todo se ha rellenado solo con la tarifa. Puedes cambiar cualquier cantidad o precio antes de enviarlo.</p>
+    <div class="li-tools li-sel"><button type="button" class="li-link" id="d-all">Marcar todas</button><span class="faint">·</span><button type="button" class="li-link" id="d-none">Desmarcar todas</button><span class="muted" id="d-cnt"></span><span class="li-vacio" id="d-vacio" role="status"></span></div>
     <div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Ud.</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="li-tools"><button type="button" class="btn sm" id="d-add">${I.plus}Añadir partida</button></div>
     <div class="totals" id="d-tot"></div>
     <div class="hitos" id="d-hitos"></div>
     ${est?'<p class="warn-line">Estimación previa: se enseña al cliente como horquilla orientativa (−10 % / +15 %) hasta hacer la visita.</p>':''}`;
-  drawTotals();
+  drawTotals(); drawInc();
   $$('[data-q]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.q]=P.over[i.dataset.q]||{}).q=parseFloat(i.value)||0; refreshLine(i.dataset.q); });
   $$('[data-pr]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.pr]=P.over[i.dataset.pr]||{}).pr=parseFloat(i.value)||0; refreshLine(i.dataset.pr); });
-  $$('[data-on]').forEach(i=>i.onchange=()=>{ P.off[i.dataset.on]=!i.checked; i.closest('tr').classList.toggle('li-off',!i.checked); drawTotals(); });
+  $$('[data-on]').forEach(i=>i.onchange=()=>{ P.off[i.dataset.on]=!i.checked; i.closest('tr').classList.toggle('li-off',!i.checked); drawTotals(); drawInc(); });
+  $$('[data-n]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.n]=P.over[i.dataset.n]||{}).n=i.value; });
+  $('#d-all').onclick=()=>{ lines().forEach(x=>P.off[x.i]=false); drawDoc(); };
+  $('#d-none').onclick=()=>{ lines().forEach(x=>P.off[x.i]=true); drawDoc(); };
+  $('#d-add').onclick=addPartida;
   $('#d-view').onclick=clientView;
-  $('#d-pdf').onclick=()=>printDoc(snapP());
+  $('#d-pdf').onclick=()=>{ if(lines().some(x=>x.on)) printDoc(snapP()); };
   $('#d-wa').onclick=sendPres;
+}
+/* contador de incluidas; sin ninguna, no se puede ver, enviar ni descargar */
+function drawInc(){
+  const L=lines(), n=L.filter(x=>x.on).length;
+  $('#d-cnt').textContent = `${n} de ${L.length} partidas incluidas`;
+  $('#d-vacio').textContent = n ? '' : 'No hay partidas incluidas';
+  ['#d-view','#d-pdf','#d-wa'].forEach(s=>$(s).disabled = !n);
+}
+const UNIDADES = ['m²','ml','ud','pa','h'];
+function capitulos(){ const c=[...new Set(Object.keys(CAT).flatMap(t=>plantilla(t).map(it=>it.cap)))]; return c.includes('Otros')?c:c.concat('Otros'); }
+function addPartida(){
+  const capAct = (lines()[0]||{}).cap;
+  modal(`<header><h2>Añadir partida</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
+  <div class="body grid">
+    <div class="seg" role="group" aria-label="Origen de la partida"><button type="button" data-ap="tarifa" aria-pressed="true">De mi tarifa</button><button type="button" data-ap="libre" aria-pressed="false">Partida libre</button></div>
+    <div class="grid" id="ap-tarifa">
+      <label class="f">Partida<select class="in" id="ap-id">${Object.keys(CAT).map(t=>`<optgroup label="${TIPOS[t]}">${plantilla(t).map(it=>`<option value="${esc(it.id)}">${esc(nombrePartida(it,t))} · ${it.u}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <label class="f">Cantidad<input class="in num" type="number" min="0" step="0.1" id="ap-q" value="1"></label>
+      <p class="faint" style="margin:0;font-size:12px" id="ap-pr"></p>
+    </div>
+    <div class="grid" id="ap-libre" style="display:none">
+      <div class="two"><label class="f">Capítulo<select class="in" id="al-cap">${capitulos().map(c=>`<option ${c===capAct?'selected':''}>${esc(c)}</option>`).join('')}</select></label>
+      <label class="f">Unidad<select class="in" id="al-u">${UNIDADES.map(u=>`<option>${u}</option>`).join('')}</select></label></div>
+      <label class="f">Descripción<input class="in" id="al-n" placeholder="p. ej. Rodapié de madera"></label>
+      <div class="two"><label class="f">Cantidad<input class="in num" type="number" min="0" step="0.1" id="al-q" value="1"></label><label class="f">Precio (€ por unidad)<input class="in num" type="number" min="0" step="0.01" id="al-pr"></label></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="al-mat"> Lleva material</label>
+    </div>
+  </div>
+  <footer><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ap-ok">${I.plus}Añadir</button></footer>`);
+  let tab='tarifa';
+  const busca = id => { for(const t of Object.keys(CAT)){ const it=plantilla(t).find(x=>x.id===id); if(it) return {it,t}; } return null; };
+  const precio = () => { const f=busca($('#ap-id').value); const pr=f&&(TARIFA.partidas[f.it.id]||[])[P.cal]; $('#ap-pr').textContent = f ? `Precio en calidad ${['básica','media','alta'][P.cal]}: ${eur2(pr)} por ${f.it.u}` : ''; };
+  $$('[data-ap]').forEach(b=>b.onclick=()=>{ tab=b.dataset.ap; $$('[data-ap]').forEach(x=>x.setAttribute('aria-pressed',x===b)); $('#ap-tarifa').style.display=tab==='tarifa'?'':'none'; $('#ap-libre').style.display=tab==='libre'?'':'none'; });
+  $('#ap-id').onchange=precio; precio();
+  $('#ap-ok').onclick=()=>{
+    const k='x'+(++P.xseq);
+    if(tab==='tarifa'){
+      const f=busca($('#ap-id').value); if(!f) return;
+      P.extra.push({k,id:f.it.id,cap:f.it.cap,n:nombrePartida(f.it,f.t),u:f.it.u,q:parseFloat($('#ap-q').value)||0,mat:!!f.it.mat});
+    } else {
+      const n=$('#al-n').value.trim(), pr=parseFloat($('#al-pr').value);
+      if(!n){ $('#al-n').focus(); return; }
+      if(!(pr>=0)){ $('#al-pr').focus(); return; }
+      P.extra.push({k,cap:$('#al-cap').value,n,u:$('#al-u').value,q:parseFloat($('#al-q').value)||0,pr,mat:$('#al-mat').checked});
+    }
+    closeModal(); drawDoc(); toast('Partida añadida');
+  };
 }
 function refreshLine(i){ const x=lines().find(l=>String(l.i)===String(i)); if(x) $(`[data-imp="${i}"]`).textContent=eur2(x.imp); drawTotals(); }
 function drawTotals(){
@@ -484,7 +560,7 @@ function drawTotals(){
 function snapP(){
   const L=lines(), T=totals(L);
   return {num:P.num, cliente:{...P.cli}, tipo:P.tipo, modo:P.modo, cal:P.cal, iva:P.iva, params:{...P.params}, fecha:0, validez:EMPRESA.validez, plazo:TARIFA.plazos[P.tipo], hitos:EMPRESA.hitos.map(h=>({...h})),
-    lineas:L.map(x=>({cap:x.cap,n:x.n,q:x.q,u:x.u,pr:x.pr,imp:x.imp,on:x.on})), base:T.base, cuota:T.iva, total:T.total};
+    lineas:L.filter(x=>x.on).map(x=>({cap:x.cap,n:x.n,q:x.q,u:x.u,pr:x.pr,imp:x.imp,on:x.on})), base:T.base, cuota:T.iva, total:T.total};
 }
 function docCliente(d, conAceptar){
   const L=d.lineas.filter(x=>x.on); let cap='';
@@ -557,6 +633,7 @@ function bindSol(root, refresh){
   $$('[data-spag]',root).forEach(b=>b.onclick=()=>{ by(b.dataset.spag).estado='pagada'; refresh(); toast('Solicitud marcada como pagada'); });
 }
 function sendPres(){
+  if(!lines().some(x=>x.on)){ toast('No hay partidas incluidas'); return; }
   const T=totals(lines());
   if(!P.cli.nombre.trim()){ toast('Pon al menos el nombre del cliente'); $('[data-cli="nombre"]').focus(); return; }
   const link = `https://${EMPRESA.web}/p/${P.num.toLowerCase()}-demo`;
@@ -768,20 +845,48 @@ function bindTips(){
 
 /* =================== AJUSTES =================== */
 let ajTipo='bano';
+function addTarifa(){
+  const nums = CAT[ajTipo].params.filter(p=>!p.opts);
+  modal(`<header><h2>Añadir partida a la tarifa · ${TIPOS[ajTipo]}</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
+  <div class="body grid">
+    <div class="two"><label class="f">Capítulo<select class="in" id="at-cap">${capitulos().map(c=>`<option>${esc(c)}</option>`).join('')}</select></label>
+    <label class="f">Unidad<select class="in" id="at-u">${UNIDADES.map(u=>`<option>${u}</option>`).join('')}</select></label></div>
+    <label class="f">Nombre<input class="in" id="at-n" placeholder="p. ej. Tarima flotante"></label>
+    <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">${['Básica','Media','Alta'].map((c,i)=>`<label class="f">${c} (€)<input class="in num" type="number" min="0" step="0.01" id="at-p${i}"></label>`).join('')}</div>
+    <label class="f">Cantidad en el presupuesto<select class="in" id="at-cant"><option value="1">1 (partida alzada)</option>${nums.map(p=>`<option value="${p.k}">Según «${esc(p.n)}»</option>`).join('')}<option value="mano">A mano en cada presupuesto</option></select></label>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="at-mat"> Lleva material</label>
+    <p class="faint" style="margin:0;font-size:12px">«A mano» sale en el presupuesto desmarcada: al marcarla, pones la cantidad.</p>
+  </div>
+  <footer><button class="btn" data-close>Cancelar</button><button class="btn primary" id="at-ok">${I.plus}Añadir a la tarifa</button></footer>`);
+  $('#at-ok').onclick=()=>{
+    const n=$('#at-n').value.trim(), pr=[0,1,2].map(i=>parseFloat($(`#at-p${i}`).value));
+    if(!n){ $('#at-n').focus(); return; }
+    const mal=pr.findIndex(v=>!(v>=0)); if(mal>=0){ $(`#at-p${mal}`).focus(); return; }
+    let k=(TARIFA.extra[ajTipo]||[]).length+1; while(TARIFA.partidas[`custom.${ajTipo}.${k}`]) k++;
+    const id=`custom.${ajTipo}.${k}`;
+    (TARIFA.extra[ajTipo]=TARIFA.extra[ajTipo]||[]).push({id,cap:$('#at-cap').value,n,u:$('#at-u').value,cantidad:$('#at-cant').value,mat:$('#at-mat').checked});
+    TARIFA.partidas[id]=pr;
+    closeModal(); vAjustes(); toast('Partida añadida a la tarifa');
+  };
+}
 function vAjustes(){
-  const c=CAT[ajTipo];
+  const its=todas(ajTipo);
   $('#view').innerHTML = `
   <section class="card pad"><h2 class="h2">Tarifa de partidas <small>de aquí sale el presupuesto automático · precios de ejemplo</small></h2>
     <div class="row" style="margin-bottom:12px"><select class="in" id="aj-t" style="width:auto" aria-label="Tipo de obra">${Object.entries(TIPOS).map(([k,v])=>`<option value="${k}" ${ajTipo===k?'selected':''}>${v}</option>`).join('')}</select><span class="faint" style="font-size:12px">Plazo estimado: ${TARIFA.plazos[ajTipo]}</span></div>
-    <div class="tbl-wrap"><table><thead><tr><th>Capítulo</th><th>Partida</th><th>Ud.</th><th class="n">Básica</th><th class="n">Media</th><th class="n">Alta</th><th>Material</th></tr></thead>
-    <tbody>${c.items.map((it,i)=>`<tr><td class="muted">${esc(it.cap)}</td><td>${esc(typeof it.n==='function'?it.n(defParams(ajTipo)):it.n)}</td><td>${it.u}</td>${[0,1,2].map(q=>`<td class="n"><input class="in li-in num" type="number" min="0" step="1" data-aj="${i}:${q}" value="${(TARIFA.partidas[it.id]||[])[q]??''}" aria-label="Precio"></td>`).join('')}<td>${it.mat?'<span class="badge g">sí</span>':'<span class="badge n">no</span>'}</td></tr>`).join('')}</tbody></table></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Capítulo</th><th>Partida</th><th>Ud.</th><th class="n">Básica</th><th class="n">Media</th><th class="n">Alta</th><th>Material</th><th class="li-q"><span class="sr">Quitar</span></th></tr></thead>
+    <tbody>${its.map(it=>{ const off=!!TARIFA.desactivadas[it.id]; return `<tr class="${off?'li-off':''}"><td class="muted">${esc(it.cap)}</td><td><input class="in li-n" data-ajn="${esc(it.id)}" value="${esc(nombrePartida(it,ajTipo))}" aria-label="Nombre de la partida"></td><td>${it.u}</td>${[0,1,2].map(q=>`<td class="n"><input class="in li-in num" type="number" min="0" step="1" data-aj="${esc(it.id)}:${q}" value="${(TARIFA.partidas[it.id]||[])[q]??''}" aria-label="Precio"></td>`).join('')}<td>${it.mat?'<span class="badge g">sí</span>':'<span class="badge n">no</span>'}</td><td class="li-q"><button type="button" class="btn sm" data-ajoff="${esc(it.id)}">${off?'Reactivar':'Quitar'}</button></td></tr>`; }).join('')}</tbody></table></div>
+    <div class="li-tools"><button type="button" class="btn sm" id="aj-add">${I.plus}Añadir partida</button>${its.some(it=>TARIFA.desactivadas[it.id])?'<span class="muted">Las quitadas no salen en presupuestos nuevos; los ya guardados no cambian.</span>':''}</div>
   </section>
   <section class="card pad" style="margin-top:16px"><h2 class="h2">Plantillas de WhatsApp <small>${TPL.length} plantillas · editables</small></h2>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${TPL.map((t,i)=>`<label class="f">${esc(t.n)}<textarea class="in" data-tpl="${i}" style="min-height:96px">${esc(t.t)}</textarea></label>`).join('')}</div>
     <p class="faint" style="font-size:12px;margin:12px 0 0">Variables disponibles: {nombre} {empresa} {comercial} {tipo_obra} {fecha_visita} {hora_visita} {direccion} {tecnico} {enlace_presupuesto} {importe_hito} {concepto_pago} {num_factura} {enlace_factura} {vencimiento} {enlace_resena}</p>
   </section>`;
   $('#aj-t').onchange=e=>{ajTipo=e.target.value;vAjustes();};
-  $$('[data-aj]').forEach(i=>i.oninput=()=>{ const [a,q]=i.dataset.aj.split(':').map(Number); const id=CAT[ajTipo].items[a].id; (TARIFA.partidas[id]=TARIFA.partidas[id]||[])[q]=parseFloat(i.value)||0; });
+  $$('[data-aj]').forEach(i=>i.oninput=()=>{ const [id,q]=i.dataset.aj.split(':'); (TARIFA.partidas[id]=TARIFA.partidas[id]||[])[+q]=parseFloat(i.value)||0; });
+  $$('[data-ajn]').forEach(i=>i.oninput=()=>{ TARIFA.nombres[i.dataset.ajn]=i.value; });
+  $$('[data-ajoff]').forEach(b=>b.onclick=()=>{ const id=b.dataset.ajoff; if(TARIFA.desactivadas[id]) delete TARIFA.desactivadas[id]; else TARIFA.desactivadas[id]=true; vAjustes(); toast(TARIFA.desactivadas[id]?'Partida quitada de la tarifa':'Partida reactivada'); });
+  $('#aj-add').onclick=addTarifa;
   $$('[data-tpl]').forEach(t=>t.oninput=()=>{ TPL[+t.dataset.tpl].t=t.value; });
 }
 
@@ -803,7 +908,7 @@ const rootStyle = document.documentElement.style;
 Object.entries({p:'--p',p2:'--p2',pDark:'--p-dark',g:'--g',gDark:'--g-dark'}).forEach(([k,v])=>{ if(EMPRESA.colores&&EMPRESA.colores[k]) rootStyle.setProperty(v, EMPRESA.colores[k]); });
 $('.brand .mark').textContent = EMPRESA.siglas;
 $('.brand b').textContent = EMPRESA.nombre;
-const faltan = Object.values(CAT).flatMap(c=>c.items).filter(it=>{ const pr=TARIFA.partidas[it.id]; return !Array.isArray(pr)||pr.length<3||pr.some(v=>typeof v!=='number'||!isFinite(v)); }).map(it=>it.id);
+const faltan = Object.keys(CAT).flatMap(plantilla).filter(it=>{ const pr=TARIFA.partidas[it.id]; return !Array.isArray(pr)||pr.length<3||pr.some(v=>typeof v!=='number'||!isFinite(v)); }).map(it=>it.id);
 if(faltan.length){
   const msgs = faltan.map(id=>`Falta el precio de la partida ${id} en config/tarifa.js`);
   msgs.forEach(m=>console.error(m));
