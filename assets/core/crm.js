@@ -127,7 +127,10 @@ function fill(t, v){
   const out = t.replace(/\{(\w+)\}/g,(m,k)=>{ if(v[k]===undefined||v[k]===null||v[k]===''){ missing.push(k); return m; } return v[k]; });
   return {text:out, missing:[...new Set(missing)]};
 }
-const waHref = text => 'https://wa.me/?text=' + encodeURIComponent(text);
+const waHref = (text, tel) => 'https://wa.me/' + (tel ? '34'+tel : '') + '?text=' + encodeURIComponent(text);
+// teléfono español: admite espacios, guiones y prefijo +34/0034; devuelve los 9 dígitos, o '' si no es válido
+const normTel = s => { let t=String(s||'').replace(/[\s-]/g,''); if(t.startsWith('+34')) t=t.slice(3); else if(t.startsWith('0034')) t=t.slice(4); return /^[6789]\d{8}$/.test(t) ? t : ''; };
+const fmtTel = t => t.replace(/^(\d{3})(\d{2})(\d{2})(\d{2})$/,'$1 $2 $3 $4');
 function leadVars(l, extra={}){
   const v = {nombre:l.nombre.split(' ')[0], comercial:EMPRESA.comercial, empresa:EMPRESA.nombre, tipo_obra:(TIPOS[l.tipo]||'').toLowerCase(), direccion:l.dir, enlace_resena:EMPRESA.resena};
   if(l.visita){ v.fecha_visita = fmtDL(addDays(l.visita.d)); v.hora_visita = l.visita.h; v.tecnico = l.visita.tec; }
@@ -277,15 +280,20 @@ function log(id,x,k){ (S.timeline[id]=S.timeline[id]||[]).push({t:'Ahora '+hms()
 function nuevoLead(){
   modal(`<header><h2>Nuevo lead</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
   <div class="body grid">
-    <div class="two"><label class="f">Nombre<input class="in" id="nl-n" placeholder="Nombre y apellidos"></label><label class="f">Población<input class="in" id="nl-p" placeholder="Majadahonda"></label></div>
+    <div class="two"><label class="f">Nombre<input class="in" id="nl-n" placeholder="Nombre y apellidos"></label>
+    <div><label class="f">Teléfono<input class="in" id="nl-tel" type="tel" inputmode="tel" placeholder="600 000 000" aria-required="true" aria-describedby="nl-tel-msg"></label><div class="tel-msg" id="nl-tel-msg" role="alert"></div></div></div>
     <div class="two"><label class="f">Tipo de obra<select class="in" id="nl-t">${Object.entries(TIPOS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
     <label class="f">Origen<select class="in" id="nl-o">${ORIGENES.map(o=>`<option>${o}</option>`).join('')}</select></label></div>
-    <label class="f">Dirección de la obra<input class="in" id="nl-d"></label>
+    <div class="two"><label class="f">Población<input class="in" id="nl-p" placeholder="Majadahonda"></label><label class="f">Dirección de la obra<input class="in" id="nl-d"></label></div>
     <label class="f">Qué necesita<textarea class="in" id="nl-x" style="min-height:70px"></textarea></label>
-    <p class="faint" style="margin:0;font-size:12px">En el producto real: se comprueba si el teléfono ya existe, se calcula la puntuación y llega el aviso por Telegram.</p>
+    <p class="faint" style="margin:0;font-size:12px">En el producto real: se calcula la puntuación y llega el aviso por Telegram.</p>
   </div><footer><button class="btn" data-close>Cancelar</button><button class="btn primary" id="nl-ok">Crear lead</button></footer>`);
   $('#nl-ok').onclick=()=>{ const n=$('#nl-n').value.trim(); if(!n){$('#nl-n').focus();return;}
-    const l={id:++seq,nombre:n,tel:'',pob:$('#nl-p').value.trim()||'—',dir:$('#nl-d').value.trim()||'—',tipo:$('#nl-t').value,origen:$('#nl-o').value,fase:'nuevo',score:60,importe:{bano:9500,cocina:14000,pintura:3000,integral:55000}[$('#nl-t').value],minSin:0,desc:$('#nl-x').value.trim()};
+    const tel=normTel($('#nl-tel').value), msg=$('#nl-tel-msg');
+    if(!tel){ msg.textContent='Teléfono no válido'; $('#nl-tel').focus(); return; }
+    const dup=S.leads.find(x=>normTel(x.tel)===tel);
+    if(dup){ msg.innerHTML=`Ya existe un lead con este teléfono: <b>${esc(dup.nombre)}</b> <button type="button" class="btn sm" id="nl-dup">Abrir ficha</button>`; $('#nl-dup').onclick=()=>openLead(dup.id); return; }
+    const l={id:++seq,nombre:n,tel,pob:$('#nl-p').value.trim()||'—',dir:$('#nl-d').value.trim()||'—',tipo:$('#nl-t').value,origen:$('#nl-o').value,fase:'nuevo',score:60,importe:{bano:9500,cocina:14000,pintura:3000,integral:55000}[$('#nl-t').value],minSin:0,desc:$('#nl-x').value.trim()};
     S.leads.unshift(l); log(l.id,'Lead creado a mano'); closeModal(); vEmbudo(); renderNav(); toast('Lead creado'); };
 }
 function askMotivo(l){
@@ -311,7 +319,7 @@ function openLead(id){
         <dt>Dirección</dt><dd>${esc(l.dir)}, ${esc(l.pob)}</dd>
         <dt>Origen</dt><dd>${esc(l.origen)}</dd>
         <dt>Puntuación</dt><dd><span class="score ${l.score>=75?'hi':''}">${l.score}/100</span></dd>
-        <dt>Teléfono</dt><dd class="faint">oculto en la demo</dd>
+        <dt>Teléfono</dt>${normTel(l.tel)?`<dd class="num">${fmtTel(normTel(l.tel))}</dd>`:'<dd class="faint">oculto en la demo</dd>'}
         ${l.visita?`<dt>Visita</dt><dd>${fmtDL(addDays(l.visita.d))}, ${l.visita.h} · ${esc(l.visita.tec)}</dd>`:''}
         ${l.fase==='aplazado'?`<dt>Recontacto</dt><dd>${fmtDL(addDays(l.recontacto))}</dd>`:''}
         ${l.motivo?`<dt>Motivo pérdida</dt><dd>${esc(l.motivo)}</dd>`:''}
@@ -343,6 +351,7 @@ function openLead(id){
 function openWA({lead, fact, tpl, taskId, extra}){
   const opts = lead ? TPL.filter(t=>t.fases.includes(lead.fase)).concat(TPL.filter(t=>!t.fases.includes(lead.fase)&&t.fases.length)) : TPL.filter(t=>['factura','cobro'].includes(t.k));
   let sel = tpl || (opts[0]&&opts[0].k) || 'nocontesta';
+  const tel = !fact && lead ? normTel(lead.tel) : '';
   const vars = () => {
     if(fact) return {nombre:fact.cliente.split(' ')[0], num_factura:fact.num, vencimiento:fmtD(addDays(fact.vence)), enlace_factura:`https://${EMPRESA.web}/f/${fact.num.toLowerCase()}-demo`};
     return leadVars(lead, extra||{});
@@ -353,7 +362,7 @@ function openWA({lead, fact, tpl, taskId, extra}){
     const txt = ta.value; const miss = (txt.match(/\{(\w+)\}/g)||[]).map(s=>s.slice(1,-1));
     $('#wa-prev').textContent = txt;
     const a = $('#wa-open'); const bad = miss.length>0;
-    a.href = bad ? '#' : waHref(txt); a.setAttribute('aria-disabled', bad?'true':'false');
+    a.href = bad ? '#' : waHref(txt, tel); a.setAttribute('aria-disabled', bad?'true':'false');
     $('#wa-miss').innerHTML = bad ? `Falta: <b>${miss.map(esc).join(', ')}</b>. El botón se bloquea para no enviar un mensaje con huecos.` : '';
   };
   const who = fact ? fact.cliente : lead.nombre;
@@ -362,7 +371,7 @@ function openWA({lead, fact, tpl, taskId, extra}){
     <label class="f">Plantilla<select class="in" id="wa-tpl">${(fact?opts:TPL).map(t=>`<option value="${t.k}" ${t.k===sel?'selected':''}>${esc(t.n)}${lead&&t.fases.includes(lead.fase)?' · recomendada':''}</option>`).join('')}</select></label>
     <label class="f">Texto (puedes retocarlo)<textarea class="in" id="wa-text"></textarea></label>
     <div><div class="faint" style="font-size:11.5px;margin-bottom:6px">Así lo verá el cliente</div><div class="wa-preview" id="wa-prev"></div><div class="missing" id="wa-miss"></div></div>
-    <p class="faint" style="margin:0;font-size:12px">En la demo el enlace se abre <b>sin teléfono</b>: WhatsApp te deja elegir el contacto. En el producto irá directo al número del cliente.</p>
+    <p class="faint" style="margin:0;font-size:12px">${tel?`Se abrirá el chat con ${fmtTel(tel)}.`:'En la demo el enlace se abre <b>sin teléfono</b>: WhatsApp te deja elegir el contacto. En el producto irá directo al número del cliente.'}</p>
   </div>
   <footer><button class="btn" id="wa-copy">${I.copy}Copiar texto</button><a class="btn wa" id="wa-open" href="#" target="_blank" rel="noopener">${I.wa}Abrir WhatsApp</a></footer>`);
   $('#wa-tpl').onchange=e=>{sel=e.target.value;draw(false);};
@@ -386,7 +395,7 @@ let P = null;
 function newP(leadId){
   const l = leadId ? S.leads.find(x=>x.id===leadId) : null;
   const tipo = l ? l.tipo : 'bano';
-  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
+  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:l?fmtTel(normTel(l.tel)):'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
 }
 function defParams(tipo){ return Object.fromEntries(CAT[tipo].params.map(p=>[p.k,p.v])); }
 function lines(){
