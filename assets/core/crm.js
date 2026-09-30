@@ -219,7 +219,7 @@ function taskRow(t){
 }
 function bindTasks(){
   const T = tasksHoy();
-  $$('[data-wa]').forEach(b=>b.onclick=()=>{ const t=T.find(x=>x.id===b.dataset.wa); if(t.fact) openWA({fact:t.fact, tpl:t.tpl, taskId:t.id}); else openWA({lead:t.lead, tpl:t.tpl, taskId:t.id}); });
+  $$('[data-wa]').forEach(b=>b.onclick=()=>{ const t=T.find(x=>x.id===b.dataset.wa); if(t.fact) openWA({fact:t.fact, tpl:t.tpl, taskId:t.id}); else openWA({lead:t.lead, tpl:t.tpl, taskId:t.id, extra:t.extra}); });
   $$('[data-done]').forEach(b=>b.onclick=()=>{ S.done.add(b.dataset.done); vHoy(); toast('Tarea completada'); });
   $$('[data-open]').forEach(b=>b.onclick=()=>openLead(+b.dataset.open));
   $$('[data-gopres]').forEach(b=>b.onclick=()=>go('presupuestos',{leadId:+b.dataset.gopres}));
@@ -600,10 +600,10 @@ function aceptar(){
     log(l.id,`Presupuesto ${prNum} aceptado online`,'ok'); log(l.id,`Fase: ${from} → Aceptado · obra ${obraId}`,'ok');
     S.obras.unshift({id:obraId,cliente:l.nombre,tipo:P.tipo,pob:l.pob||'—',avance:0,presupuesto:Math.round(T.total),matPres:Math.round(matPres),matReal:0,horas:0,costeHora:24,subc:0,hitos:EMPRESA.hitos.map(h=>({n:h.n,imp:T.total*h.p/100,cob:false})),fin:60,nueva:true});
     S.pres=S.pres.filter(p=>p.num!==prNum); S.pres.unshift({num:prNum,cliente:l.nombre,tipo:P.tipo,total:T.total,estado:'aceptado',leadId:l.id,doc});
-    (S.extraTasks=S.extraTasks||[]).push({id:'senal'+obraId,lead:l,dot:'g',t:`Enviar solicitud de señal · ${l.nombre}`,s:`${eur(senal)} · obra ${obraId}`,tpl:'hito'});
     const h0=EMPRESA.hitos[0];
     const sp={num:`SP-${TODAY.getFullYear()}-${String(S.nextSP++).padStart(4,'0')}`,pres:prNum,obra:obraId,cliente:l.nombre,dir:doc.cliente.dir||'',leadId:l.id,hito:h0.n,concepto:`${h0.n} (${h0.p} %)`,importe:senal,fecha:0,estado:'pendiente'};
     S.solicitudes.unshift(sp);
+    (S.extraTasks=S.extraTasks||[]).push({id:'senal'+obraId,lead:l,dot:'g',t:`Enviar solicitud de señal · ${l.nombre}`,s:`${eur(senal)} · obra ${obraId}`,tpl:'hito',extra:{importe_hito:eur(sp.importe),concepto_pago:sp.hito.toLowerCase()}});
     S.extraTasks.push({id:'factsenal'+sp.num,lead:l,dot:'a',t:`Subir la factura de la señal de ${l.nombre} cuando la emita la gestoría`,s:`${sp.num} · ${eur(sp.importe)} · obra ${obraId}`,goFact:true});
     const wa=$('#fl-wa'), ob=$('#fl-obras'); if(wa){ wa.disabled=false; wa.onclick=()=>openWA({lead:l,tpl:'hito',extra:{importe_hito:eur(sp.importe),concepto_pago:sp.hito.toLowerCase()},taskId:'senal'+obraId}); }
     if(ob){ ob.disabled=false; ob.onclick=()=>{closeModal();go('obras');}; }
