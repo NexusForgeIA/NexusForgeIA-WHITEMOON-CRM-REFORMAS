@@ -27,7 +27,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="preload" href="assets/fonts/sora-latin-var.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="assets/crm.css">
+<link rel="stylesheet" href="assets/core/crm.css">
 </head>
 <body>
 <div class="cta-bar" role="region" aria-label="Contacto con WhiteMoon">
@@ -36,7 +36,7 @@
 </div>
 <div class="app">
   <aside class="side" aria-label="Menú principal">
-    <div class="brand"><div class="mark" aria-hidden="true">RN</div><div><b>Reformas Norte</b><small>CRM · prototipo</small></div></div>
+    <div class="brand"><div class="mark" aria-hidden="true"></div><div><b></b><small>CRM · prototipo</small></div></div>
     <nav class="nav" id="nav"></nav>
     <p class="demo-note">Prototipo con <b>datos de ejemplo</b>. Nada se guarda ni se envía: WhatsApp se abre sin teléfono para que elijas tú el contacto.</p>
   </aside>
@@ -46,6 +46,9 @@
 <div class="tip" id="tip" hidden></div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
-<script src="assets/crm.js"></script>
+<script src="config/empresa.js"></script>
+<script src="config/tarifa.js"></script>
+<script src="assets/demo-data.js"></script>
+<script src="assets/core/crm.js"></script>
 </body>
 </html>
