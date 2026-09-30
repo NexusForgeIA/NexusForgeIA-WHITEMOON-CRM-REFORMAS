@@ -396,21 +396,36 @@ let P = null;
 function newP(leadId){
   const l = leadId ? S.leads.find(x=>x.id===leadId) : null;
   const tipo = l ? l.tipo : 'bano';
-  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:l?fmtTel(normTel(l.tel)):'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
+  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:l?fmtTel(normTel(l.tel)):'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, quit:{}, extra:[], xseq:0, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
 }
+/* over[k] = cambios de ese presupuesto (q, pr, n) · off[k] = opcional desmarcada · quit[k] = partida quitada
+   extra = partidas añadidas a mano: {k, id?(de la tarifa), cap, n, u, q, pr?(libre), mat} */
+function plantilla(tipo){ return CAT[tipo].items; }
+function nombrePartida(it, tipo){ return typeof it.n==='function' ? it.n(defParams(tipo)) : it.n; }
+function soloNombres(){ P.over=Object.fromEntries(Object.entries(P.over).filter(([,o])=>o.n!==undefined).map(([k,o])=>[k,{n:o.n}])); }
 function defParams(tipo){ return Object.fromEntries(CAT[tipo].params.map(p=>[p.k,p.v])); }
 function lines(){
-  const c = CAT[P.tipo]; const out=[];
-  c.items.forEach((it,i)=>{
-    const q0 = +it.q(P.params) || 0; if(q0<=0 && !P.over[i]) return;
+  const out=[];
+  plantilla(P.tipo).forEach(it=>{
+    const k = it.id; if(P.quit[k]) return;
+    const q0 = +it.q(P.params) || 0; if(q0<=0 && !P.over[k] && !it.mano) return;
     const pr0 = (TARIFA.partidas[it.id]||[])[P.cal];
-    const o = P.over[i]||{};
+    const o = P.over[k]||{};
     const q = o.q!==undefined ? o.q : Math.round(q0*10)/10;
     const pr = o.pr!==undefined ? o.pr : pr0;
-    const on = !P.off[i];
-    out.push({i,cap:it.cap,n:typeof it.n==='function'?it.n(P.params):it.n,u:it.u,q,pr,imp:q*pr,on,opt:!!it.opt,mat:!!it.mat});
+    const on = !P.off[k];
+    out.push({i:k,cap:it.cap,n:o.n!==undefined?o.n:(typeof it.n==='function'?it.n(P.params):it.n),u:it.u,q,pr,imp:q*pr,on,opt:!!it.opt,mat:!!it.mat});
   });
-  return out;
+  P.extra.forEach(x=>{
+    if(P.quit[x.k]) return;
+    const o = P.over[x.k]||{};
+    const q = o.q!==undefined ? o.q : x.q;
+    const pr = o.pr!==undefined ? o.pr : x.id ? (TARIFA.partidas[x.id]||[])[P.cal] : x.pr;
+    out.push({i:x.k,cap:x.cap,n:o.n!==undefined?o.n:x.n,u:x.u,q,pr,imp:q*pr,on:true,opt:false,mat:!!x.mat});
+  });
+  // las añadidas van al final de su capítulo; si el capítulo no existe, capítulo nuevo al final
+  const caps=[...new Set(out.map(x=>x.cap))];
+  return caps.flatMap(c=>out.filter(x=>x.cap===c));
 }
 function totals(L){ const base=L.filter(x=>x.on).reduce((a,x)=>a+x.imp,0); const iva=base*P.iva/100; return {base,iva,total:base+iva}; }
 function vPres(opts){
@@ -442,9 +457,9 @@ function vPres(opts){
   </div>`;
   $('#p-lead').onchange=e=>{ newP(e.target.value?+e.target.value:null); vPres({}); };
   $$('[data-cli]').forEach(i=>i.oninput=()=>{P.cli[i.dataset.cli]=i.value;});
-  $('#p-tipo').onchange=e=>{ P.tipo=e.target.value; P.params=defParams(P.tipo); P.over={}; P.off={}; vPres({}); };
-  $$('[data-par]').forEach(i=>i.oninput=()=>{ P.params[i.dataset.par]= i.type==='number' ? (parseFloat(i.value)||0) : i.value; P.over={}; drawDoc(); });
-  $$('[data-cal]').forEach(b=>b.onclick=()=>{ P.cal=+b.dataset.cal; P.over={}; $$('[data-cal]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
+  $('#p-tipo').onchange=e=>{ P.tipo=e.target.value; P.params=defParams(P.tipo); P.over={}; P.off={}; P.quit={}; P.extra=[]; vPres({}); };
+  $$('[data-par]').forEach(i=>i.oninput=()=>{ P.params[i.dataset.par]= i.type==='number' ? (parseFloat(i.value)||0) : i.value; soloNombres(); drawDoc(); });
+  $$('[data-cal]').forEach(b=>b.onclick=()=>{ P.cal=+b.dataset.cal; soloNombres(); $$('[data-cal]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
   $$('[data-modo]').forEach(b=>b.onclick=()=>{ P.modo=b.dataset.modo; $$('[data-modo]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
   $('#p-iva').onchange=e=>{P.iva=+e.target.value;drawDoc();};
   drawDoc();
@@ -452,16 +467,19 @@ function vPres(opts){
 function drawDoc(){
   const L = lines(); const T = totals(L); let cap='';
   const est = P.modo==='estimacion';
-  const rows = L.map(x=>{ let h=''; if(x.cap!==cap){cap=x.cap;h+=`<tr class="cap"><td colspan="5">${esc(cap)}</td></tr>`;}
-    return h+`<tr class="${x.on?'':'li-off'}"><td>${x.opt?`<input type="checkbox" aria-label="Incluir partida" data-on="${x.i}" ${x.on?'checked':''}> `:''}${esc(x.n)}</td><td>${x.u}</td>
+  const rows = L.map(x=>{ let h=''; if(x.cap!==cap){cap=x.cap;h+=`<tr class="cap"><td colspan="6">${esc(cap)}</td></tr>`;}
+    return h+`<tr class="${x.on?'':'li-off'}"><td><div class="li-name">${x.opt?`<input type="checkbox" aria-label="Incluir partida" data-on="${x.i}" ${x.on?'checked':''}>`:''}<input class="in li-n" data-n="${x.i}" value="${esc(x.n)}" aria-label="Descripción de la partida"></div></td><td>${x.u}</td>
       <td class="n"><input class="in li-in num" type="number" step="0.1" min="0" data-q="${x.i}" value="${x.q}" aria-label="Cantidad"></td>
       <td class="n"><input class="in li-in num" type="number" step="1" min="0" data-pr="${x.i}" value="${x.pr}" aria-label="Precio unitario"></td>
-      <td class="n num" data-imp="${x.i}">${eur2(x.imp)}</td></tr>`; }).join('');
+      <td class="n num" data-imp="${x.i}">${eur2(x.imp)}</td>
+      <td class="li-q"><button type="button" class="li-x" data-quit="${x.i}" aria-label="Quitar partida">×</button></td></tr>`; }).join('');
+  const nq = Object.keys(P.quit).length;
   $('#doc').innerHTML = `
     <div class="doc-head"><div><span class="ref">${P.num} · ${est?'ESTIMACIÓN PREVIA':'PRESUPUESTO'}</span><h2>${TIPOS[P.tipo]} · ${esc(P.cli.nombre||'Cliente sin nombre')}</h2><small class="muted">${esc(P.cli.dir||'Sin dirección')} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días · plazo estimado ${TARIFA.plazos[P.tipo]}</small></div>
     <div class="row"><button class="btn" id="d-view">${I.eye}Vista del cliente</button><button class="btn" id="d-pdf">${I.pres}Descargar PDF</button><button class="btn wa" id="d-wa">${I.wa}Enviar por WhatsApp</button></div></div>
     <p class="faint" style="font-size:12px;margin:0 0 10px">Todo se ha rellenado solo con la tarifa. Puedes cambiar cualquier cantidad o precio antes de enviarlo.</p>
-    <div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Ud.</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Ud.</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th><th class="li-q"><span class="sr">Quitar</span></th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="li-tools"><button type="button" class="btn sm" id="d-add">${I.plus}Añadir partida</button>${nq?`<span class="muted">${nq} ${nq===1?'partida quitada':'partidas quitadas'} · <button type="button" class="li-link" id="d-rest">Restaurar</button></span>`:''}</div>
     <div class="totals" id="d-tot"></div>
     <div class="hitos" id="d-hitos"></div>
     ${est?'<p class="warn-line">Estimación previa: se enseña al cliente como horquilla orientativa (−10 % / +15 %) hasta hacer la visita.</p>':''}`;
@@ -469,9 +487,53 @@ function drawDoc(){
   $$('[data-q]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.q]=P.over[i.dataset.q]||{}).q=parseFloat(i.value)||0; refreshLine(i.dataset.q); });
   $$('[data-pr]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.pr]=P.over[i.dataset.pr]||{}).pr=parseFloat(i.value)||0; refreshLine(i.dataset.pr); });
   $$('[data-on]').forEach(i=>i.onchange=()=>{ P.off[i.dataset.on]=!i.checked; i.closest('tr').classList.toggle('li-off',!i.checked); drawTotals(); });
+  $$('[data-n]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.n]=P.over[i.dataset.n]||{}).n=i.value; });
+  $$('[data-quit]').forEach(b=>b.onclick=()=>{ P.quit[b.dataset.quit]=true; drawDoc(); });
+  $('#d-add').onclick=addPartida;
+  if($('#d-rest')) $('#d-rest').onclick=()=>{ P.quit={}; drawDoc(); };
   $('#d-view').onclick=clientView;
   $('#d-pdf').onclick=()=>printDoc(snapP());
   $('#d-wa').onclick=sendPres;
+}
+const UNIDADES = ['m²','ml','ud','pa','h'];
+function capitulos(){ const c=[...new Set(Object.keys(CAT).flatMap(t=>plantilla(t).map(it=>it.cap)))]; return c.includes('Otros')?c:c.concat('Otros'); }
+function addPartida(){
+  const capAct = (lines()[0]||{}).cap;
+  modal(`<header><h2>Añadir partida</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
+  <div class="body grid">
+    <div class="seg" role="group" aria-label="Origen de la partida"><button type="button" data-ap="tarifa" aria-pressed="true">De mi tarifa</button><button type="button" data-ap="libre" aria-pressed="false">Partida libre</button></div>
+    <div class="grid" id="ap-tarifa">
+      <label class="f">Partida<select class="in" id="ap-id">${Object.keys(CAT).map(t=>`<optgroup label="${TIPOS[t]}">${plantilla(t).map(it=>`<option value="${esc(it.id)}">${esc(nombrePartida(it,t))} · ${it.u}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <label class="f">Cantidad<input class="in num" type="number" min="0" step="0.1" id="ap-q" value="1"></label>
+      <p class="faint" style="margin:0;font-size:12px" id="ap-pr"></p>
+    </div>
+    <div class="grid" id="ap-libre" style="display:none">
+      <div class="two"><label class="f">Capítulo<select class="in" id="al-cap">${capitulos().map(c=>`<option ${c===capAct?'selected':''}>${esc(c)}</option>`).join('')}</select></label>
+      <label class="f">Unidad<select class="in" id="al-u">${UNIDADES.map(u=>`<option>${u}</option>`).join('')}</select></label></div>
+      <label class="f">Descripción<input class="in" id="al-n" placeholder="p. ej. Rodapié de madera"></label>
+      <div class="two"><label class="f">Cantidad<input class="in num" type="number" min="0" step="0.1" id="al-q" value="1"></label><label class="f">Precio (€ por unidad)<input class="in num" type="number" min="0" step="0.01" id="al-pr"></label></div>
+      <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="al-mat"> Lleva material</label>
+    </div>
+  </div>
+  <footer><button class="btn" data-close>Cancelar</button><button class="btn primary" id="ap-ok">${I.plus}Añadir</button></footer>`);
+  let tab='tarifa';
+  const busca = id => { for(const t of Object.keys(CAT)){ const it=plantilla(t).find(x=>x.id===id); if(it) return {it,t}; } return null; };
+  const precio = () => { const f=busca($('#ap-id').value); const pr=f&&(TARIFA.partidas[f.it.id]||[])[P.cal]; $('#ap-pr').textContent = f ? `Precio en calidad ${['básica','media','alta'][P.cal]}: ${eur2(pr)} por ${f.it.u}` : ''; };
+  $$('[data-ap]').forEach(b=>b.onclick=()=>{ tab=b.dataset.ap; $$('[data-ap]').forEach(x=>x.setAttribute('aria-pressed',x===b)); $('#ap-tarifa').style.display=tab==='tarifa'?'':'none'; $('#ap-libre').style.display=tab==='libre'?'':'none'; });
+  $('#ap-id').onchange=precio; precio();
+  $('#ap-ok').onclick=()=>{
+    const k='x'+(++P.xseq);
+    if(tab==='tarifa'){
+      const f=busca($('#ap-id').value); if(!f) return;
+      P.extra.push({k,id:f.it.id,cap:f.it.cap,n:nombrePartida(f.it,f.t),u:f.it.u,q:parseFloat($('#ap-q').value)||0,mat:!!f.it.mat});
+    } else {
+      const n=$('#al-n').value.trim(), pr=parseFloat($('#al-pr').value);
+      if(!n){ $('#al-n').focus(); return; }
+      if(!(pr>=0)){ $('#al-pr').focus(); return; }
+      P.extra.push({k,cap:$('#al-cap').value,n,u:$('#al-u').value,q:parseFloat($('#al-q').value)||0,pr,mat:$('#al-mat').checked});
+    }
+    closeModal(); drawDoc(); toast('Partida añadida');
+  };
 }
 function refreshLine(i){ const x=lines().find(l=>String(l.i)===String(i)); if(x) $(`[data-imp="${i}"]`).textContent=eur2(x.imp); drawTotals(); }
 function drawTotals(){
