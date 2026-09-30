@@ -399,9 +399,9 @@ let P = null;
 function newP(leadId){
   const l = leadId ? S.leads.find(x=>x.id===leadId) : null;
   const tipo = l ? l.tipo : 'bano';
-  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:l?fmtTel(normTel(l.tel)):'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, quit:{}, extra:[], xseq:0, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
+  P = {leadId: l?l.id:null, cli:{nombre:l?l.nombre:'',tel:l?fmtTel(normTel(l.tel)):'',email:'',dir:l?`${l.dir}, ${l.pob}`:'',nif:''}, tipo, cal:1, modo:'definitivo', params:defParams(tipo), over:{}, off:{}, extra:[], xseq:0, iva:EMPRESA.iva, num:`PR-2026-0${S.nextPR}`};
 }
-/* over[k] = cambios de ese presupuesto (q, pr, n) · off[k] = opcional desmarcada · quit[k] = partida quitada
+/* over[k] = cambios de ese presupuesto (q, pr, n) · off[k] = true si la partida está desmarcada (no va en el presupuesto)
    extra = partidas añadidas a mano: {k, id?(de la tarifa), cap, n, u, q, pr?(libre), mat} */
 /* partidas de un tipo = plantilla del núcleo + las propias de la empresa (TARIFA.extra), con su nombre propio si lo tiene */
 function todas(tipo){
@@ -416,21 +416,20 @@ function defParams(tipo){ return Object.fromEntries(CAT[tipo].params.map(p=>[p.k
 function lines(){
   const out=[];
   plantilla(P.tipo).forEach(it=>{
-    const k = it.id; if(P.quit[k]) return;
+    const k = it.id;
     const q0 = +it.q(P.params) || 0; if(q0<=0 && !P.over[k] && !it.mano) return;
     const pr0 = (TARIFA.partidas[it.id]||[])[P.cal];
     const o = P.over[k]||{};
     const q = o.q!==undefined ? o.q : Math.round(q0*10)/10;
     const pr = o.pr!==undefined ? o.pr : pr0;
-    const on = !P.off[k];
+    const on = k in P.off ? !P.off[k] : !it.mano; // las «a mano» llegan desmarcadas
     out.push({i:k,cap:it.cap,n:o.n!==undefined?o.n:(typeof it.n==='function'?it.n(P.params):it.n),u:it.u,q,pr,imp:q*pr,on,opt:!!it.opt,mat:!!it.mat});
   });
   P.extra.forEach(x=>{
-    if(P.quit[x.k]) return;
     const o = P.over[x.k]||{};
     const q = o.q!==undefined ? o.q : x.q;
     const pr = o.pr!==undefined ? o.pr : x.id ? (TARIFA.partidas[x.id]||[])[P.cal] : x.pr;
-    out.push({i:x.k,cap:x.cap,n:o.n!==undefined?o.n:x.n,u:x.u,q,pr,imp:q*pr,on:true,opt:false,mat:!!x.mat});
+    out.push({i:x.k,cap:x.cap,n:o.n!==undefined?o.n:x.n,u:x.u,q,pr,imp:q*pr,on:x.k in P.off?!P.off[x.k]:true,opt:false,mat:!!x.mat});
   });
   // las añadidas van al final de su capítulo; si el capítulo no existe, capítulo nuevo al final
   const caps=[...new Set(out.map(x=>x.cap))];
@@ -466,7 +465,7 @@ function vPres(opts){
   </div>`;
   $('#p-lead').onchange=e=>{ newP(e.target.value?+e.target.value:null); vPres({}); };
   $$('[data-cli]').forEach(i=>i.oninput=()=>{P.cli[i.dataset.cli]=i.value;});
-  $('#p-tipo').onchange=e=>{ P.tipo=e.target.value; P.params=defParams(P.tipo); P.over={}; P.off={}; P.quit={}; P.extra=[]; vPres({}); };
+  $('#p-tipo').onchange=e=>{ P.tipo=e.target.value; P.params=defParams(P.tipo); P.over={}; P.off={}; P.extra=[]; vPres({}); };
   $$('[data-par]').forEach(i=>i.oninput=()=>{ P.params[i.dataset.par]= i.type==='number' ? (parseFloat(i.value)||0) : i.value; soloNombres(); drawDoc(); });
   $$('[data-cal]').forEach(b=>b.onclick=()=>{ P.cal=+b.dataset.cal; soloNombres(); $$('[data-cal]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
   $$('[data-modo]').forEach(b=>b.onclick=()=>{ P.modo=b.dataset.modo; $$('[data-modo]').forEach(x=>x.setAttribute('aria-pressed',x===b)); drawDoc(); });
@@ -477,32 +476,38 @@ function drawDoc(){
   const L = lines(); const T = totals(L); let cap='';
   const est = P.modo==='estimacion';
   const rows = L.map(x=>{ let h=''; if(x.cap!==cap){cap=x.cap;h+=`<tr class="cap"><td colspan="6">${esc(cap)}</td></tr>`;}
-    return h+`<tr class="${x.on?'':'li-off'}"><td><div class="li-name">${x.opt?`<input type="checkbox" aria-label="Incluir partida" data-on="${x.i}" ${x.on?'checked':''}>`:''}<input class="in li-n" data-n="${x.i}" value="${esc(x.n)}" aria-label="Descripción de la partida"></div></td><td>${x.u}</td>
+    return h+`<tr class="${x.on?'':'li-off'}"><td><div class="li-name"><input type="checkbox" aria-label="Incluir partida" data-on="${x.i}" ${x.on?'checked':''}><input class="in li-n" data-n="${x.i}" value="${esc(x.n)}" aria-label="Descripción de la partida"></div></td><td>${x.u}</td>
       <td class="n"><input class="in li-in num" type="number" step="0.1" min="0" data-q="${x.i}" value="${x.q}" aria-label="Cantidad"></td>
       <td class="n"><input class="in li-in num" type="number" step="1" min="0" data-pr="${x.i}" value="${x.pr}" aria-label="Precio unitario"></td>
-      <td class="n num" data-imp="${x.i}">${eur2(x.imp)}</td>
-      <td class="li-q"><button type="button" class="li-x" data-quit="${x.i}" aria-label="Quitar partida">×</button></td></tr>`; }).join('');
-  const nq = Object.keys(P.quit).length;
+      <td class="n num" data-imp="${x.i}">${eur2(x.imp)}</td></tr>`; }).join('');
   $('#doc').innerHTML = `
     <div class="doc-head"><div><span class="ref">${P.num} · ${est?'ESTIMACIÓN PREVIA':'PRESUPUESTO'}</span><h2>${TIPOS[P.tipo]} · ${esc(P.cli.nombre||'Cliente sin nombre')}</h2><small class="muted">${esc(P.cli.dir||'Sin dirección')} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días · plazo estimado ${TARIFA.plazos[P.tipo]}</small></div>
     <div class="row"><button class="btn" id="d-view">${I.eye}Vista del cliente</button><button class="btn" id="d-pdf">${I.pres}Descargar PDF</button><button class="btn wa" id="d-wa">${I.wa}Enviar por WhatsApp</button></div></div>
     <p class="faint" style="font-size:12px;margin:0 0 10px">Todo se ha rellenado solo con la tarifa. Puedes cambiar cualquier cantidad o precio antes de enviarlo.</p>
-    <div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Ud.</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th><th class="li-q"><span class="sr">Quitar</span></th></tr></thead><tbody>${rows}</tbody></table></div>
-    <div class="li-tools"><button type="button" class="btn sm" id="d-add">${I.plus}Añadir partida</button>${nq?`<span class="muted">${nq} ${nq===1?'partida quitada':'partidas quitadas'} · <button type="button" class="li-link" id="d-rest">Restaurar</button></span>`:''}</div>
+    <div class="li-tools li-sel"><button type="button" class="li-link" id="d-all">Marcar todas</button><span class="faint">·</span><button type="button" class="li-link" id="d-none">Desmarcar todas</button><span class="muted" id="d-cnt"></span><span class="li-vacio" id="d-vacio" role="status"></span></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Ud.</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="li-tools"><button type="button" class="btn sm" id="d-add">${I.plus}Añadir partida</button></div>
     <div class="totals" id="d-tot"></div>
     <div class="hitos" id="d-hitos"></div>
     ${est?'<p class="warn-line">Estimación previa: se enseña al cliente como horquilla orientativa (−10 % / +15 %) hasta hacer la visita.</p>':''}`;
-  drawTotals();
+  drawTotals(); drawInc();
   $$('[data-q]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.q]=P.over[i.dataset.q]||{}).q=parseFloat(i.value)||0; refreshLine(i.dataset.q); });
   $$('[data-pr]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.pr]=P.over[i.dataset.pr]||{}).pr=parseFloat(i.value)||0; refreshLine(i.dataset.pr); });
-  $$('[data-on]').forEach(i=>i.onchange=()=>{ P.off[i.dataset.on]=!i.checked; i.closest('tr').classList.toggle('li-off',!i.checked); drawTotals(); });
+  $$('[data-on]').forEach(i=>i.onchange=()=>{ P.off[i.dataset.on]=!i.checked; i.closest('tr').classList.toggle('li-off',!i.checked); drawTotals(); drawInc(); });
   $$('[data-n]').forEach(i=>i.oninput=()=>{ (P.over[i.dataset.n]=P.over[i.dataset.n]||{}).n=i.value; });
-  $$('[data-quit]').forEach(b=>b.onclick=()=>{ P.quit[b.dataset.quit]=true; drawDoc(); });
+  $('#d-all').onclick=()=>{ lines().forEach(x=>P.off[x.i]=false); drawDoc(); };
+  $('#d-none').onclick=()=>{ lines().forEach(x=>P.off[x.i]=true); drawDoc(); };
   $('#d-add').onclick=addPartida;
-  if($('#d-rest')) $('#d-rest').onclick=()=>{ P.quit={}; drawDoc(); };
   $('#d-view').onclick=clientView;
-  $('#d-pdf').onclick=()=>printDoc(snapP());
+  $('#d-pdf').onclick=()=>{ if(lines().some(x=>x.on)) printDoc(snapP()); };
   $('#d-wa').onclick=sendPres;
+}
+/* contador de incluidas; sin ninguna, no se puede ver, enviar ni descargar */
+function drawInc(){
+  const L=lines(), n=L.filter(x=>x.on).length;
+  $('#d-cnt').textContent = `${n} de ${L.length} partidas incluidas`;
+  $('#d-vacio').textContent = n ? '' : 'No hay partidas incluidas';
+  ['#d-view','#d-pdf','#d-wa'].forEach(s=>$(s).disabled = !n);
 }
 const UNIDADES = ['m²','ml','ud','pa','h'];
 function capitulos(){ const c=[...new Set(Object.keys(CAT).flatMap(t=>plantilla(t).map(it=>it.cap)))]; return c.includes('Otros')?c:c.concat('Otros'); }
@@ -555,7 +560,7 @@ function drawTotals(){
 function snapP(){
   const L=lines(), T=totals(L);
   return {num:P.num, cliente:{...P.cli}, tipo:P.tipo, modo:P.modo, cal:P.cal, iva:P.iva, params:{...P.params}, fecha:0, validez:EMPRESA.validez, plazo:TARIFA.plazos[P.tipo], hitos:EMPRESA.hitos.map(h=>({...h})),
-    lineas:L.map(x=>({cap:x.cap,n:x.n,q:x.q,u:x.u,pr:x.pr,imp:x.imp,on:x.on})), base:T.base, cuota:T.iva, total:T.total};
+    lineas:L.filter(x=>x.on).map(x=>({cap:x.cap,n:x.n,q:x.q,u:x.u,pr:x.pr,imp:x.imp,on:x.on})), base:T.base, cuota:T.iva, total:T.total};
 }
 function docCliente(d, conAceptar){
   const L=d.lineas.filter(x=>x.on); let cap='';
@@ -628,6 +633,7 @@ function bindSol(root, refresh){
   $$('[data-spag]',root).forEach(b=>b.onclick=()=>{ by(b.dataset.spag).estado='pagada'; refresh(); toast('Solicitud marcada como pagada'); });
 }
 function sendPres(){
+  if(!lines().some(x=>x.on)){ toast('No hay partidas incluidas'); return; }
   const T=totals(lines());
   if(!P.cli.nombre.trim()){ toast('Pon al menos el nombre del cliente'); $('[data-cli="nombre"]').focus(); return; }
   const link = `https://${EMPRESA.web}/p/${P.num.toLowerCase()}-demo`;
@@ -849,7 +855,7 @@ function addTarifa(){
     <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">${['Básica','Media','Alta'].map((c,i)=>`<label class="f">${c} (€)<input class="in num" type="number" min="0" step="0.01" id="at-p${i}"></label>`).join('')}</div>
     <label class="f">Cantidad en el presupuesto<select class="in" id="at-cant"><option value="1">1 (partida alzada)</option>${nums.map(p=>`<option value="${p.k}">Según «${esc(p.n)}»</option>`).join('')}<option value="mano">A mano en cada presupuesto</option></select></label>
     <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="at-mat"> Lleva material</label>
-    <p class="faint" style="margin:0;font-size:12px">«A mano» sale en el presupuesto con cantidad 0 (no suma) hasta que pongas la cantidad.</p>
+    <p class="faint" style="margin:0;font-size:12px">«A mano» sale en el presupuesto desmarcada: al marcarla, pones la cantidad.</p>
   </div>
   <footer><button class="btn" data-close>Cancelar</button><button class="btn primary" id="at-ok">${I.plus}Añadir a la tarifa</button></footer>`);
   $('#at-ok').onclick=()=>{
