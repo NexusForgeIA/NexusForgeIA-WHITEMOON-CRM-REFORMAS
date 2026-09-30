@@ -34,6 +34,9 @@ const I = {
 /* =================== configuración, tarifa y datos =================== */
 const EMPRESA = window.CRM_EMPRESA;
 const TARIFA = window.CRM_TARIFA;
+TARIFA.extra = TARIFA.extra || {};               // partidas propias de la empresa: {tipo:[{id:'custom.…', cap, n, u, cantidad:'1'|'mano'|<parámetro>, mat}]}
+TARIFA.desactivadas = TARIFA.desactivadas || {}; // {id:true}: no salen en presupuestos nuevos (no se borran)
+TARIFA.nombres = TARIFA.nombres || {};           // {id:'nombre propio'} para renombrar una partida
 const PHASES = [
   {id:'nuevo',n:'Nuevo',p:.05},{id:'contactado',n:'Contactado',p:.10},{id:'visita_ag',n:'Visita agendada',p:.20},
   {id:'visita_ok',n:'Visita hecha',p:.30},{id:'pres_prep',n:'Presupuesto en preparación',p:.35},{id:'pres_env',n:'Presupuesto enviado',p:.45},
@@ -400,7 +403,13 @@ function newP(leadId){
 }
 /* over[k] = cambios de ese presupuesto (q, pr, n) · off[k] = opcional desmarcada · quit[k] = partida quitada
    extra = partidas añadidas a mano: {k, id?(de la tarifa), cap, n, u, q, pr?(libre), mat} */
-function plantilla(tipo){ return CAT[tipo].items; }
+/* partidas de un tipo = plantilla del núcleo + las propias de la empresa (TARIFA.extra), con su nombre propio si lo tiene */
+function todas(tipo){
+  const propias = (TARIFA.extra[tipo]||[]).map(x=>({id:x.id,cap:x.cap,n:x.n,u:x.u,mat:x.mat?1:0,propia:1,mano:x.cantidad==='mano'?1:0,
+    q:x.cantidad==='1'?()=>1:x.cantidad==='mano'?()=>0:p=>+p[x.cantidad]||0}));
+  return CAT[tipo].items.concat(propias).map(it=>TARIFA.nombres[it.id]!==undefined?{...it,n:TARIFA.nombres[it.id]}:it);
+}
+function plantilla(tipo){ return todas(tipo).filter(it=>!TARIFA.desactivadas[it.id]); }
 function nombrePartida(it, tipo){ return typeof it.n==='function' ? it.n(defParams(tipo)) : it.n; }
 function soloNombres(){ P.over=Object.fromEntries(Object.entries(P.over).filter(([,o])=>o.n!==undefined).map(([k,o])=>[k,{n:o.n}])); }
 function defParams(tipo){ return Object.fromEntries(CAT[tipo].params.map(p=>[p.k,p.v])); }
@@ -830,20 +839,48 @@ function bindTips(){
 
 /* =================== AJUSTES =================== */
 let ajTipo='bano';
+function addTarifa(){
+  const nums = CAT[ajTipo].params.filter(p=>!p.opts);
+  modal(`<header><h2>Añadir partida a la tarifa · ${TIPOS[ajTipo]}</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
+  <div class="body grid">
+    <div class="two"><label class="f">Capítulo<select class="in" id="at-cap">${capitulos().map(c=>`<option>${esc(c)}</option>`).join('')}</select></label>
+    <label class="f">Unidad<select class="in" id="at-u">${UNIDADES.map(u=>`<option>${u}</option>`).join('')}</select></label></div>
+    <label class="f">Nombre<input class="in" id="at-n" placeholder="p. ej. Tarima flotante"></label>
+    <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:10px">${['Básica','Media','Alta'].map((c,i)=>`<label class="f">${c} (€)<input class="in num" type="number" min="0" step="0.01" id="at-p${i}"></label>`).join('')}</div>
+    <label class="f">Cantidad en el presupuesto<select class="in" id="at-cant"><option value="1">1 (partida alzada)</option>${nums.map(p=>`<option value="${p.k}">Según «${esc(p.n)}»</option>`).join('')}<option value="mano">A mano en cada presupuesto</option></select></label>
+    <label style="display:flex;gap:8px;align-items:center;font-size:13px"><input type="checkbox" id="at-mat"> Lleva material</label>
+    <p class="faint" style="margin:0;font-size:12px">«A mano» sale en el presupuesto con cantidad 0 (no suma) hasta que pongas la cantidad.</p>
+  </div>
+  <footer><button class="btn" data-close>Cancelar</button><button class="btn primary" id="at-ok">${I.plus}Añadir a la tarifa</button></footer>`);
+  $('#at-ok').onclick=()=>{
+    const n=$('#at-n').value.trim(), pr=[0,1,2].map(i=>parseFloat($(`#at-p${i}`).value));
+    if(!n){ $('#at-n').focus(); return; }
+    const mal=pr.findIndex(v=>!(v>=0)); if(mal>=0){ $(`#at-p${mal}`).focus(); return; }
+    let k=(TARIFA.extra[ajTipo]||[]).length+1; while(TARIFA.partidas[`custom.${ajTipo}.${k}`]) k++;
+    const id=`custom.${ajTipo}.${k}`;
+    (TARIFA.extra[ajTipo]=TARIFA.extra[ajTipo]||[]).push({id,cap:$('#at-cap').value,n,u:$('#at-u').value,cantidad:$('#at-cant').value,mat:$('#at-mat').checked});
+    TARIFA.partidas[id]=pr;
+    closeModal(); vAjustes(); toast('Partida añadida a la tarifa');
+  };
+}
 function vAjustes(){
-  const c=CAT[ajTipo];
+  const its=todas(ajTipo);
   $('#view').innerHTML = `
   <section class="card pad"><h2 class="h2">Tarifa de partidas <small>de aquí sale el presupuesto automático · precios de ejemplo</small></h2>
     <div class="row" style="margin-bottom:12px"><select class="in" id="aj-t" style="width:auto" aria-label="Tipo de obra">${Object.entries(TIPOS).map(([k,v])=>`<option value="${k}" ${ajTipo===k?'selected':''}>${v}</option>`).join('')}</select><span class="faint" style="font-size:12px">Plazo estimado: ${TARIFA.plazos[ajTipo]}</span></div>
-    <div class="tbl-wrap"><table><thead><tr><th>Capítulo</th><th>Partida</th><th>Ud.</th><th class="n">Básica</th><th class="n">Media</th><th class="n">Alta</th><th>Material</th></tr></thead>
-    <tbody>${c.items.map((it,i)=>`<tr><td class="muted">${esc(it.cap)}</td><td>${esc(typeof it.n==='function'?it.n(defParams(ajTipo)):it.n)}</td><td>${it.u}</td>${[0,1,2].map(q=>`<td class="n"><input class="in li-in num" type="number" min="0" step="1" data-aj="${i}:${q}" value="${(TARIFA.partidas[it.id]||[])[q]??''}" aria-label="Precio"></td>`).join('')}<td>${it.mat?'<span class="badge g">sí</span>':'<span class="badge n">no</span>'}</td></tr>`).join('')}</tbody></table></div>
+    <div class="tbl-wrap"><table><thead><tr><th>Capítulo</th><th>Partida</th><th>Ud.</th><th class="n">Básica</th><th class="n">Media</th><th class="n">Alta</th><th>Material</th><th class="li-q"><span class="sr">Quitar</span></th></tr></thead>
+    <tbody>${its.map(it=>{ const off=!!TARIFA.desactivadas[it.id]; return `<tr class="${off?'li-off':''}"><td class="muted">${esc(it.cap)}</td><td><input class="in li-n" data-ajn="${esc(it.id)}" value="${esc(nombrePartida(it,ajTipo))}" aria-label="Nombre de la partida"></td><td>${it.u}</td>${[0,1,2].map(q=>`<td class="n"><input class="in li-in num" type="number" min="0" step="1" data-aj="${esc(it.id)}:${q}" value="${(TARIFA.partidas[it.id]||[])[q]??''}" aria-label="Precio"></td>`).join('')}<td>${it.mat?'<span class="badge g">sí</span>':'<span class="badge n">no</span>'}</td><td class="li-q"><button type="button" class="btn sm" data-ajoff="${esc(it.id)}">${off?'Reactivar':'Quitar'}</button></td></tr>`; }).join('')}</tbody></table></div>
+    <div class="li-tools"><button type="button" class="btn sm" id="aj-add">${I.plus}Añadir partida</button>${its.some(it=>TARIFA.desactivadas[it.id])?'<span class="muted">Las quitadas no salen en presupuestos nuevos; los ya guardados no cambian.</span>':''}</div>
   </section>
   <section class="card pad" style="margin-top:16px"><h2 class="h2">Plantillas de WhatsApp <small>${TPL.length} plantillas · editables</small></h2>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${TPL.map((t,i)=>`<label class="f">${esc(t.n)}<textarea class="in" data-tpl="${i}" style="min-height:96px">${esc(t.t)}</textarea></label>`).join('')}</div>
     <p class="faint" style="font-size:12px;margin:12px 0 0">Variables disponibles: {nombre} {empresa} {comercial} {tipo_obra} {fecha_visita} {hora_visita} {direccion} {tecnico} {enlace_presupuesto} {importe_hito} {concepto_pago} {num_factura} {enlace_factura} {vencimiento} {enlace_resena}</p>
   </section>`;
   $('#aj-t').onchange=e=>{ajTipo=e.target.value;vAjustes();};
-  $$('[data-aj]').forEach(i=>i.oninput=()=>{ const [a,q]=i.dataset.aj.split(':').map(Number); const id=CAT[ajTipo].items[a].id; (TARIFA.partidas[id]=TARIFA.partidas[id]||[])[q]=parseFloat(i.value)||0; });
+  $$('[data-aj]').forEach(i=>i.oninput=()=>{ const [id,q]=i.dataset.aj.split(':'); (TARIFA.partidas[id]=TARIFA.partidas[id]||[])[+q]=parseFloat(i.value)||0; });
+  $$('[data-ajn]').forEach(i=>i.oninput=()=>{ TARIFA.nombres[i.dataset.ajn]=i.value; });
+  $$('[data-ajoff]').forEach(b=>b.onclick=()=>{ const id=b.dataset.ajoff; if(TARIFA.desactivadas[id]) delete TARIFA.desactivadas[id]; else TARIFA.desactivadas[id]=true; vAjustes(); toast(TARIFA.desactivadas[id]?'Partida quitada de la tarifa':'Partida reactivada'); });
+  $('#aj-add').onclick=addTarifa;
   $$('[data-tpl]').forEach(t=>t.oninput=()=>{ TPL[+t.dataset.tpl].t=t.value; });
 }
 
@@ -865,7 +902,7 @@ const rootStyle = document.documentElement.style;
 Object.entries({p:'--p',p2:'--p2',pDark:'--p-dark',g:'--g',gDark:'--g-dark'}).forEach(([k,v])=>{ if(EMPRESA.colores&&EMPRESA.colores[k]) rootStyle.setProperty(v, EMPRESA.colores[k]); });
 $('.brand .mark').textContent = EMPRESA.siglas;
 $('.brand b').textContent = EMPRESA.nombre;
-const faltan = Object.values(CAT).flatMap(c=>c.items).filter(it=>{ const pr=TARIFA.partidas[it.id]; return !Array.isArray(pr)||pr.length<3||pr.some(v=>typeof v!=='number'||!isFinite(v)); }).map(it=>it.id);
+const faltan = Object.keys(CAT).flatMap(plantilla).filter(it=>{ const pr=TARIFA.partidas[it.id]; return !Array.isArray(pr)||pr.length<3||pr.some(v=>typeof v!=='number'||!isFinite(v)); }).map(it=>it.id);
 if(faltan.length){
   const msgs = faltan.map(id=>`Falta el precio de la partida ${id} en config/tarifa.js`);
   msgs.forEach(m=>console.error(m));
