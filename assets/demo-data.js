@@ -39,21 +39,22 @@ window.CRM_DEMO = {
     {c:'Referidos',inv:0,leads:4,ventas:2,margen:6300}
   ],
   done:new Set(), pres:[
-    {num:'PR-2026-0114',cliente:'Pablo Ortega',tipo:'integral',total:69337.4,estado:'enviado',leadId:8,
-     // copia fija calculada con la tarifa de ejemplo (integral, calidad media, 95 m², 2 baños, cocina, IVA 10 %); fecha = días respecto a hoy
-     doc:{num:'PR-2026-0114',cliente:{nombre:'Pablo Ortega',tel:'',email:'',dir:'Av. Europa 12, Pozuelo',nif:''},tipo:'integral',modo:'definitivo',cal:1,iva:10,params:{m2:95,banos:2,cocina:'si'},fecha:-2,validez:30,plazo:'8-10 semanas',hitos:[{n:'Señal a la firma',p:30},{n:'A mitad de obra',p:40},{n:'A la entrega',p:30}],
+    {num:'PR-2026-0114',cliente:'Pablo Ortega',tipo:'integral',total:57334.2,estado:'enviado',leadId:8,
+     // copia fija calculada con la tarifa de ejemplo (integral, calidad media, 85 m², 1 baño, cocina, IVA 10 %); fecha = días respecto a hoy
+     doc:{num:'PR-2026-0114',cliente:{nombre:'Pablo Ortega',tel:'',email:'',dir:'Av. Europa 12, Pozuelo',nif:''},tipo:'integral',modo:'definitivo',cal:1,iva:10,params:{m2:85,banos:1,cocina:'si'},fecha:-2,validez:30,plazo:'8-10 semanas',hitos:[{n:'Señal a la firma',p:30},{n:'A mitad de obra',p:40},{n:'A la entrega',p:30}],
       lineas:[
-        {cap:'Demolición',n:'Demolición general y retirada',q:95,u:'m²',pr:45,imp:4275,on:true},
+        {cap:'Demolición',n:'Demolición general y retirada',q:85,u:'m²',pr:45,imp:3825,on:true},
         {cap:'Demolición',n:'Gestión de residuos y contenedores',q:1,u:'pa',pr:900,imp:900,on:true},
-        {cap:'Albañilería',n:'Tabiquería y albañilería',q:95,u:'m²',pr:85,imp:8075,on:true},
-        {cap:'Instalaciones',n:'Fontanería general',q:95,u:'m²',pr:65,imp:6175,on:true},
-        {cap:'Instalaciones',n:'Instalación eléctrica nueva',q:95,u:'m²',pr:75,imp:7125,on:true},
-        {cap:'Revestimientos',n:'Solado con material incluido',q:95,u:'m²',pr:55,imp:5225,on:true},
-        {cap:'Estancias',n:'Baño completo',q:2,u:'ud',pr:6900,imp:13800,on:true},
+        {cap:'Albañilería',n:'Tabiquería y albañilería',q:85,u:'m²',pr:85,imp:7225,on:true},
+        {cap:'Instalaciones',n:'Fontanería general',q:85,u:'m²',pr:65,imp:5525,on:true},
+        {cap:'Instalaciones',n:'Instalación eléctrica nueva',q:85,u:'m²',pr:75,imp:6375,on:true},
+        {cap:'Revestimientos',n:'Solado con material incluido',q:85,u:'m²',pr:55,imp:4675,on:true},
+        {cap:'Estancias',n:'Baño completo',q:1,u:'ud',pr:6900,imp:6900,on:true},
         {cap:'Estancias',n:'Cocina completa',q:1,u:'ud',pr:10500,imp:10500,on:true},
-        {cap:'Carpintería',n:'Puertas de paso',q:8,u:'ud',pr:420,imp:3360,on:true},
-        {cap:'Acabados',n:'Pintura de paredes y techos',q:361,u:'m²',pr:9,imp:3249,on:true},
+        {cap:'Carpintería',n:'Puertas de paso',q:7,u:'ud',pr:420,imp:2940,on:true},
+        {cap:'Acabados',n:'Pintura de paredes y techos',q:323,u:'m²',pr:9,imp:2907,on:true},
         {cap:'Acabados',n:'Limpieza final de obra',q:1,u:'pa',pr:350,imp:350,on:true}
-      ],base:63034,cuota:6303.4,total:69337.4}}
-  ], nextPR:115, nextObra:312
+      ],base:52122,cuota:5212.2,total:57334.2}}
+  ], nextPR:115, nextObra:312,
+  solicitudes:[], nextSP:1
 };

@@ -213,6 +213,7 @@ function taskRow(t){
   return `<div class="task" data-task="${t.id}"><span class="dot ${t.dot}"></span><div class="t"><b>${esc(t.t)}</b><small>${esc(t.s)}</small></div><div class="acts">
     ${t.tpl?`<button class="btn wa sm" data-wa="${t.id}">${I.wa}WhatsApp</button>`:''}
     ${t.goPres?`<button class="btn sm primary" data-gopres="${t.lead.id}">Abrir presupuestador</button>`:''}
+    ${t.goFact?`<button class="btn sm primary" data-gofact="${t.id}">Ir a Facturas</button>`:''}
     ${t.lead?`<button class="btn sm" data-open="${t.lead.id}">Ficha</button>`:''}
     <button class="btn sm ghost" data-done="${t.id}" aria-label="Marcar hecha">✓</button></div></div>`;
 }
@@ -222,6 +223,7 @@ function bindTasks(){
   $$('[data-done]').forEach(b=>b.onclick=()=>{ S.done.add(b.dataset.done); vHoy(); toast('Tarea completada'); });
   $$('[data-open]').forEach(b=>b.onclick=()=>openLead(+b.dataset.open));
   $$('[data-gopres]').forEach(b=>b.onclick=()=>go('presupuestos',{leadId:+b.dataset.gopres}));
+  $$('[data-gofact]').forEach(b=>b.onclick=()=>go('facturas'));
 }
 function pipelineAbierto(){ return S.leads.filter(l=>PHASES.some(p=>p.id===l.fase)&&l.fase!=='aceptado').reduce((a,l)=>a+l.importe,0); }
 
@@ -300,6 +302,7 @@ function openLead(id){
   const l = S.leads.find(x=>x.id===id); if(!l) return;
   const tl = (S.timeline[id]||[{t:'Hace 2 días',x:'Lead creado · origen '+l.origen}]);
   const prs = S.pres.filter(p=>p.leadId===l.id);
+  const sols = S.solicitudes.filter(s=>s.leadId===l.id);
   modal(`<header><h2>${esc(l.nombre)} <span class="badge">${PH[l.fase].n}</span></h2><button class="x" data-close aria-label="Cerrar">×</button></header>
   <div class="body"><div class="fic-grid">
     <div>
@@ -315,7 +318,9 @@ function openLead(id){
       </dl>
       <p class="muted" style="margin:14px 0 0">${esc(l.desc||'')}</p>
       <h3 class="h2" style="font-size:13px;margin-top:16px">Presupuestos</h3>
-      ${prs.length?`<div class="fic-pres">${prs.map((p,i)=>`<div class="fic-pr"><div><b class="num">${esc(p.num)}</b> <span class="badge ${p.estado==='aceptado'?'g':'a'}">${esc(p.estado)}</span><br><small class="muted">${fmtD(addDays(p.doc.fecha))} · <span class="num">${eur2(p.total)}</span></small></div><div class="row" style="gap:6px"><button class="btn sm" data-pver="${i}">${I.eye}Ver</button><button class="btn sm" data-ppdf="${i}">${I.pres}Descargar PDF</button></div></div>`).join('')}</div>`:'<p class="faint" style="margin:0;font-size:12.5px">Aún no hay presupuestos</p>'}
+      ${prs.length?`<div class="fic-pres">${prs.map((p,i)=>`<div class="fic-pr"><div><b class="num">${esc(p.num)}</b> <span class="badge ${p.estado==='aceptado'?'g':'a'}">${esc(p.estado)}</span><br><small class="muted">${fmtD(addDays(p.doc.fecha))} · <span class="num">${eur2(p.total)}</span></small></div><div class="row" style="gap:6px"><button class="btn sm" data-pver="${i}">${I.eye}Ver</button><button class="btn sm" data-ppdf="${i}">${I.pres}Descargar PDF</button><button class="btn wa sm" data-pwa="${i}">${I.wa}WhatsApp</button></div></div>`).join('')}</div>`:'<p class="faint" style="margin:0;font-size:12.5px">Aún no hay presupuestos</p>'}
+      ${sols.length?`<h3 class="h2" style="font-size:13px;margin-top:16px">Solicitudes de pago</h3>
+      <div class="fic-pres">${sols.map(s=>`<div class="fic-pr"><div><b class="num">${esc(s.num)}</b> <span class="badge ${s.estado==='pagada'?'g':'a'}">${esc(s.estado)}</span><br><small class="muted">${esc(s.concepto)} · obra ${esc(s.obra)} · <span class="num">${eur2(s.importe)}</span></small></div><div class="row" style="gap:6px">${solBtns(s)}</div></div>`).join('')}</div>`:''}
       <label class="f" style="margin-top:16px">Mover a fase<select class="in" id="fx-fase">${[...PHASES,...EXITS].map(p=>`<option value="${p.id}" ${p.id===l.fase?'selected':''}>${p.n}</option>`).join('')}</select></label>
     </div>
     <div><h3 class="h2" style="font-size:13px">Línea de tiempo</h3><ul class="timeline">${tl.slice().reverse().map(e=>`<li class="${e.k||''}"><time>${esc(e.t)}</time>${esc(e.x)}</li>`).join('')}</ul></div>
@@ -329,6 +334,8 @@ function openLead(id){
   $('#fx-wa').onclick=()=>openWA({lead:l});
   $$('[data-pver]').forEach(b=>b.onclick=()=>verDoc(prs[+b.dataset.pver].doc, false));
   $$('[data-ppdf]').forEach(b=>b.onclick=()=>printDoc(prs[+b.dataset.ppdf].doc));
+  $$('[data-pwa]').forEach(b=>b.onclick=()=>{ const p=prs[+b.dataset.pwa]; openWA({lead:l,tpl:'presenv',extra:{enlace_presupuesto:`https://${EMPRESA.web}/p/${p.num.toLowerCase()}-demo`}}); });
+  bindSol($('#ov'), ()=>openLead(l.id));
   $('#fx-pres').onclick=()=>{ closeModal(); go('presupuestos',{leadId:l.id}); };
 }
 
@@ -473,7 +480,7 @@ function docCliente(d, conAceptar){
   const L=d.lineas.filter(x=>x.on); let cap='';
   const est=d.modo==='estimacion';
   return `<div class="client-doc">
-    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div><h3>${EMPRESA.nombre}</h3><span class="cd-muted">${d.num} · ${fmtD(addDays(d.fecha))} · válido ${d.validez} días</span></div><div style="text-align:right"><b>${esc(d.cliente.nombre||'Cliente')}</b><br><span class="cd-muted">${esc(d.cliente.dir||'')}</span></div></div>
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div><h3>${EMPRESA.nombre}</h3><span class="cd-doc">${est?'ESTIMACIÓN PREVIA':'PRESUPUESTO'}</span><span class="cd-muted">${d.num} · ${fmtD(addDays(d.fecha))} · válido ${d.validez} días</span></div><div style="text-align:right"><b>${esc(d.cliente.nombre||'Cliente')}</b><br><span class="cd-muted">${esc(d.cliente.dir||'')}</span></div></div>
     <div class="tbl-wrap"><table><thead><tr><th>Concepto</th><th class="n">Cant.</th><th class="n">Importe</th></tr></thead><tbody>${L.map(x=>{let h='';if(x.cap!==cap){cap=x.cap;h+=`<tr class="cd-cap"><td colspan="3">${esc(cap)}</td></tr>`;}return h+`<tr><td>${esc(x.n)}</td><td class="n num">${x.q} ${x.u}</td><td class="n num">${eur2(x.imp)}</td></tr>`;}).join('')}</tbody></table></div>
     <div class="cd-total"><span>Total (IVA ${d.iva} % incl.)</span><span class="num">${est?`${eur(d.total*.9)} – ${eur(d.total*1.15)}`:eur2(d.total)}</span></div>
     <p class="cd-muted" style="font-size:12.5px">Forma de pago: ${d.hitos.map(h=>`${h.n.toLowerCase()} (${h.p} %)`).join(', ')}. Plazo estimado: ${d.plazo}.</p>
@@ -496,12 +503,48 @@ function clientView(){
   verDoc(d, true);
   if(d.modo!=='estimacion') $('#acc-ok').onclick=()=>{ if(!$('#acc-c').checked||!$('#acc-n').value.trim()){ toast('Falta el nombre o marcar la casilla'); return; } aceptar(); };
 }
-function printDoc(d){
+function printDoc(d){ printHTML(docCliente(d, false), `${d.num} - ${d.cliente.nombre||'Cliente'}`); }
+function printHTML(html, title){
   let root=$('#print-root'); if(!root){ root=document.createElement('div'); root.id='print-root'; document.body.appendChild(root); }
-  root.innerHTML=docCliente(d, false);
-  const prev=document.title; document.title=`${d.num} - ${d.cliente.nombre||'Cliente'}`;
+  root.innerHTML=html;
+  const prev=document.title; document.title=title;
   window.addEventListener('afterprint',()=>{ document.title=prev; root.innerHTML=''; },{once:true});
   window.print();
+}
+
+/* ---- solicitudes de pago: proforma para pedir un hito. NO es una factura (el CRM no emite facturas) ---- */
+function docSolicitud(s){
+  return `<div class="client-doc">
+    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div><h3>${EMPRESA.nombre}</h3><span class="cd-doc">SOLICITUD DE PAGO</span><span class="cd-muted">${esc(s.num)} · ${fmtD(addDays(s.fecha))}</span></div><div style="text-align:right"><b>${esc(s.cliente)}</b><br><span class="cd-muted">${esc(s.dir||'')}</span></div></div>
+    <div class="tbl-wrap"><table><tbody>
+      <tr><td>Obra</td><td class="n num">${esc(s.obra)}</td></tr>
+      <tr><td>Presupuesto aceptado</td><td class="n num">${esc(s.pres)}</td></tr>
+      <tr><td>Concepto</td><td class="n">${esc(s.concepto)}</td></tr>
+    </tbody></table></div>
+    <div class="cd-total"><span>Importe (IVA incluido)</span><span class="num">${eur2(s.importe)}</span></div>
+    <p class="cd-muted" style="font-size:12.5px"><b>Este documento no es una factura.</b> La factura la emitirá ${esc(EMPRESA.nombre)} a través de su gestoría.</p>
+  </div>`;
+}
+function verSol(s){
+  modal(`<header><h2>Solicitud de pago ${esc(s.num)}</h2><button class="x" data-close aria-label="Cerrar">×</button></header>
+  <div class="body">${docSolicitud(s)}</div>
+  <footer><button class="btn" id="sv-pdf">${I.pres}Descargar PDF</button></footer>`,'wide');
+  $('#sv-pdf').onclick=()=>printSol(s);
+}
+function printSol(s){ printHTML(docSolicitud(s), `${s.num} - ${s.cliente}`); }
+function waSol(s){
+  const l=S.leads.find(x=>x.id===s.leadId)||{nombre:s.cliente,tipo:'',dir:'',fase:'aceptado'};
+  openWA({lead:l,tpl:'hito',extra:{importe_hito:eur(s.importe),concepto_pago:s.hito.toLowerCase()}});
+}
+function solBtns(s){
+  return `<button class="btn sm" data-sver="${esc(s.num)}">${I.eye}Ver</button><button class="btn sm" data-spdf="${esc(s.num)}">${I.pres}Descargar PDF</button><button class="btn wa sm" data-swa="${esc(s.num)}">${I.wa}WhatsApp</button>${s.estado==='pendiente'?`<button class="btn sm" data-spag="${esc(s.num)}">Marcar pagada</button>`:''}`;
+}
+function bindSol(root, refresh){
+  const by=n=>S.solicitudes.find(s=>s.num===n);
+  $$('[data-sver]',root).forEach(b=>b.onclick=()=>verSol(by(b.dataset.sver)));
+  $$('[data-spdf]',root).forEach(b=>b.onclick=()=>printSol(by(b.dataset.spdf)));
+  $$('[data-swa]',root).forEach(b=>b.onclick=()=>waSol(by(b.dataset.swa)));
+  $$('[data-spag]',root).forEach(b=>b.onclick=()=>{ by(b.dataset.spag).estado='pagada'; refresh(); toast('Solicitud marcada como pagada'); });
 }
 function sendPres(){
   const T=totals(lines());
@@ -558,7 +601,11 @@ function aceptar(){
     S.obras.unshift({id:obraId,cliente:l.nombre,tipo:P.tipo,pob:l.pob||'—',avance:0,presupuesto:Math.round(T.total),matPres:Math.round(matPres),matReal:0,horas:0,costeHora:24,subc:0,hitos:EMPRESA.hitos.map(h=>({n:h.n,imp:T.total*h.p/100,cob:false})),fin:60,nueva:true});
     S.pres=S.pres.filter(p=>p.num!==prNum); S.pres.unshift({num:prNum,cliente:l.nombre,tipo:P.tipo,total:T.total,estado:'aceptado',leadId:l.id,doc});
     (S.extraTasks=S.extraTasks||[]).push({id:'senal'+obraId,lead:l,dot:'g',t:`Enviar solicitud de señal · ${l.nombre}`,s:`${eur(senal)} · obra ${obraId}`,tpl:'hito'});
-    const wa=$('#fl-wa'), ob=$('#fl-obras'); if(wa){ wa.disabled=false; wa.onclick=()=>openWA({lead:l,tpl:'hito',extra:{importe_hito:eur(senal),concepto_pago:EMPRESA.hitos[0].n.toLowerCase()},taskId:'senal'+obraId}); }
+    const h0=EMPRESA.hitos[0];
+    const sp={num:`SP-${TODAY.getFullYear()}-${String(S.nextSP++).padStart(4,'0')}`,pres:prNum,obra:obraId,cliente:l.nombre,dir:doc.cliente.dir||'',leadId:l.id,hito:h0.n,concepto:`${h0.n} (${h0.p} %)`,importe:senal,fecha:0,estado:'pendiente'};
+    S.solicitudes.unshift(sp);
+    S.extraTasks.push({id:'factsenal'+sp.num,lead:l,dot:'a',t:`Subir la factura de la señal de ${l.nombre} cuando la emita la gestoría`,s:`${sp.num} · ${eur(sp.importe)} · obra ${obraId}`,goFact:true});
+    const wa=$('#fl-wa'), ob=$('#fl-obras'); if(wa){ wa.disabled=false; wa.onclick=()=>openWA({lead:l,tpl:'hito',extra:{importe_hito:eur(sp.importe),concepto_pago:sp.hito.toLowerCase()},taskId:'senal'+obraId}); }
     if(ob){ ob.disabled=false; ob.onclick=()=>{closeModal();go('obras');}; }
     P=null; renderNav();
   };
@@ -595,6 +642,11 @@ function vFacturas(){
   $('#view').innerHTML = `
   <div class="note"><b>Las facturas las emite vuestra gestoría o vuestro programa de facturación.</b> El CRM no las crea ni las envía a Hacienda: aquí se guardan, se asocian a cada obra, se envían por WhatsApp y se controla el cobro.</div>
   <div class="grid" style="grid-template-columns:minmax(0,1fr);gap:16px">
+    <section class="card pad"><h2 class="h2">Solicitudes de pago</h2>
+      ${S.solicitudes.length?`<div class="tbl-wrap"><table><thead><tr><th>Nº</th><th>Cliente</th><th>Obra</th><th>Concepto</th><th class="n">Importe</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${S.solicitudes.map(s=>`<tr><td class="num"><b>${esc(s.num)}</b></td><td>${esc(s.cliente)}</td><td class="num">${esc(s.obra)}</td><td>${esc(s.concepto)}</td><td class="n num">${eur2(s.importe)}</td><td><span class="badge ${s.estado==='pagada'?'g':'a'}">${esc(s.estado)}</span></td>
+        <td><div class="row" style="gap:6px;flex-wrap:nowrap">${solBtns(s)}</div></td></tr>`).join('')}</tbody></table></div>`:'<p class="faint" style="margin:0;font-size:12.5px">Aún no hay solicitudes de pago</p>'}
+    </section>
     <section class="card pad"><h2 class="h2">Subir factura <small>PDF o foto</small></h2>
       <div class="drop">
         <div class="two"><label class="f">Archivo<input class="in" type="file" id="fu-file" accept="application/pdf,image/*"></label><label class="f">Nº de factura<input class="in" id="fu-num" placeholder="F-2026-047"></label></div>
@@ -618,6 +670,7 @@ function vFacturas(){
     if(file&&file.type.startsWith('image/')){ try{ f.url=URL.createObjectURL(file); }catch(e){} }
     S.facturas.unshift(f); vFacturas(); toast('Factura guardada en la obra '+o.id);
   };
+  bindSol($('#view'), vFacturas);
   $$('[data-cob]').forEach(b=>b.onclick=()=>{ S.facturas[+b.dataset.cob].estado='cobrada'; vFacturas(); toast('Cobro registrado'); });
   $$('[data-fwa]').forEach(b=>b.onclick=()=>{ const f=S.facturas[+b.dataset.fwa]; openWA({fact:f,tpl:f.estado==='pendiente'&&f.vence<0?'cobro':'factura'}); });
   $$('[data-ver]').forEach(b=>b.onclick=()=>{ const f=S.facturas[+b.dataset.ver]; modal(`<header><h2>${esc(f.num)}</h2><button class="x" data-close aria-label="Cerrar">×</button></header><div class="body"><img src="${f.url}" alt="Factura ${esc(f.num)}" style="max-width:100%;border-radius:10px"></div>`); });
