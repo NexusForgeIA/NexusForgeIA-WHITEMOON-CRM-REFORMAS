@@ -31,8 +31,9 @@ const I = {
   eye:'<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'
 };
 
-/* =================== datos de ejemplo =================== */
-const EMPRESA = {nombre:'Reformas Norte', comercial:'Marta', web:'reformasnorte.es', iva:21, validez:30, hitos:[{n:'Señal a la firma',p:30},{n:'A mitad de obra',p:40},{n:'A la entrega',p:30}], resena:'https://g.page/r/ejemplo/review'};
+/* =================== configuración, tarifa y datos =================== */
+const EMPRESA = window.CRM_EMPRESA;
+const TARIFA = window.CRM_TARIFA;
 const PHASES = [
   {id:'nuevo',n:'Nuevo',p:.05},{id:'contactado',n:'Contactado',p:.10},{id:'visita_ag',n:'Visita agendada',p:.20},
   {id:'visita_ok',n:'Visita hecha',p:.30},{id:'pres_prep',n:'Presupuesto en preparación',p:.35},{id:'pres_env',n:'Presupuesto enviado',p:.45},
@@ -44,102 +45,63 @@ const TIPOS = {bano:'Baño',cocina:'Cocina',pintura:'Pintura',integral:'Reforma 
 const ORIGENES = ['Web','Google Ads','Habitissimo','Instagram','Referido','Llamada'];
 
 let seq = 100;
-const S = {
-  leads:[
-    {id:1,nombre:'Lucía Herrera',tel:'',pob:'Majadahonda',dir:'C/ Doctor Calero 14, 2ºB',tipo:'bano',origen:'Google Ads',fase:'nuevo',score:82,importe:9800,minSin:38,desc:'Quiere cambiar bañera por plato de ducha y alicatar entero.'},
-    {id:2,nombre:'Javier Montes',tel:'',pob:'Las Rozas',dir:'Av. de Atenas 9',tipo:'cocina',origen:'Web',fase:'nuevo',score:64,importe:14500,minSin:12,desc:'Cocina abierta al salón, muebles y encimera.'},
-    {id:3,nombre:'Carmen Ruiz',tel:'',pob:'Pozuelo',dir:'C/ Francia 3',tipo:'pintura',origen:'Instagram',fase:'contactado',score:48,importe:3200,desc:'Pintar piso de 80 m², techos incluidos.'},
-    {id:4,nombre:'Alberto Sanz',tel:'',pob:'Boadilla',dir:'C/ Valle de Arán 22',tipo:'integral',origen:'Referido',fase:'visita_ag',score:91,importe:62000,visita:{d:0,h:'17:30',tec:'Rubén'},desc:'Reforma integral de piso heredado, 95 m².'},
-    {id:5,nombre:'Nuria Blanco',tel:'',pob:'Majadahonda',dir:'C/ Santa Catalina 6',tipo:'bano',origen:'Habitissimo',fase:'visita_ag',score:70,importe:8900,visita:{d:1,h:'10:00',tec:'Rubén'},desc:'Baño pequeño, 4 m².'},
-    {id:6,nombre:'Diego Pardo',tel:'',pob:'Collado Villalba',dir:'C/ Real 41',tipo:'cocina',origen:'Google Ads',fase:'visita_ok',score:76,importe:16800,desc:'Visita hecha: 4,2 ml de muebles, suelo 10 m².'},
-    {id:7,nombre:'Elena Vidal',tel:'',pob:'Las Rozas',dir:'C/ Camilo José Cela 8',tipo:'bano',origen:'Web',fase:'pres_prep',score:73,importe:10400,entregaEn:1,desc:'Presupuesto comprometido para mañana.'},
-    {id:8,nombre:'Pablo Ortega',tel:'',pob:'Pozuelo',dir:'Av. Europa 12',tipo:'integral',origen:'Google Ads',fase:'pres_env',score:80,importe:58000,enviadoHace:2,visto:true,desc:'Presupuesto PR-2026-0114 enviado. Lo ha abierto 3 veces.'},
-    {id:9,nombre:'Rosa Iglesias',tel:'',pob:'Majadahonda',dir:'C/ Granadilla 5',tipo:'cocina',origen:'Referido',fase:'pres_env',score:69,importe:13200,enviadoHace:10,visto:true,desc:'Compara con otra empresa.'},
-    {id:10,nombre:'Tomás León',tel:'',pob:'Boadilla',dir:'C/ Mirasierra 2',tipo:'bano',origen:'Instagram',fase:'negoc',score:77,importe:11300,desc:'Pide versión con calidad media en vez de alta.'},
-    {id:11,nombre:'Irene Castro',tel:'',pob:'Las Rozas',dir:'C/ Real 7',tipo:'pintura',origen:'Web',fase:'aplazado',score:40,importe:2900,recontacto:18,desc:'Lo hará después de verano.'},
-    {id:12,nombre:'Hugo Marín',tel:'',pob:'Pozuelo',dir:'C/ Sevilla 30',tipo:'cocina',origen:'Habitissimo',fase:'perdido',score:55,importe:12100,motivo:'Precio',desc:'Eligió otra empresa por precio.'},
-  ],
-  timeline:{
-    1:[{t:'Hoy 09:12',x:'Lead entra desde Google Ads · aviso Telegram enviado'}],
-    8:[{t:'Hace 2 días',x:'Presupuesto PR-2026-0114 enviado por WhatsApp',k:'wa'},{t:'Hace 2 días',x:'Presupuesto visto por el cliente',k:'ok'},{t:'Ayer',x:'Presupuesto visto de nuevo (3ª vez)',k:'ok'}],
-    4:[{t:'Hace 3 días',x:'Referido por cliente de la obra O-0301'},{t:'Hace 2 días',x:'Visita agendada con Rubén',k:'ok'},{t:'Hace 2 días',x:'Confirmación de visita enviada',k:'wa'}]
-  },
-  obras:[
-    {id:'O-0309',cliente:'Sara Gómez',tipo:'cocina',pob:'Majadahonda',avance:65,presupuesto:15800,matPres:6200,matReal:6750,horas:142,costeHora:24,subc:1200,hitos:[{n:'Señal',imp:4740,cob:true},{n:'Mitad',imp:6320,cob:true},{n:'Entrega',imp:4740,cob:false}],fin:12},
-    {id:'O-0310',cliente:'Luis Fernández',tipo:'bano',pob:'Las Rozas',avance:30,presupuesto:9600,matPres:3400,matReal:3290,horas:48,costeHora:24,subc:0,hitos:[{n:'Señal',imp:2880,cob:true},{n:'Mitad',imp:3840,cob:false},{n:'Entrega',imp:2880,cob:false}],fin:21},
-    {id:'O-0311',cliente:'Comunidad C/ Sol 4',tipo:'pintura',pob:'Pozuelo',avance:90,presupuesto:7400,matPres:1500,matReal:1720,horas:120,costeHora:22,subc:0,hitos:[{n:'Señal',imp:2220,cob:true},{n:'Mitad',imp:2960,cob:true},{n:'Entrega',imp:2220,cob:false}],fin:3}
-  ],
-  facturas:[
-    {num:'F-2026-041',obra:'O-0309',cliente:'Sara Gómez',imp:6320,emit:-20,vence:-5,estado:'pendiente',archivo:'F-2026-041.pdf'},
-    {num:'F-2026-044',obra:'O-0310',cliente:'Luis Fernández',imp:2880,emit:-12,vence:3,estado:'cobrada',archivo:'F-2026-044.pdf'},
-    {num:'F-2026-046',obra:'O-0311',cliente:'Comunidad C/ Sol 4',imp:2960,emit:-6,vence:9,estado:'pendiente',archivo:'F-2026-046.pdf'},
-    {num:'F-2026-038',obra:'O-0305',cliente:'Andrés Molina',imp:11900,emit:-34,vence:-19,estado:'cobrada',archivo:'F-2026-038.pdf'}
-  ],
-  contratos:[{cliente:'Comunidad C/ Sol 4',servicio:'Mantenimiento zonas comunes',cuota:90},{cliente:'Comunidad Av. Europa 20',servicio:'Mantenimiento zonas comunes',cuota:90},{cliente:'Óptica Visión (local)',servicio:'Mantenimiento del local',cuota:60}],
-  canales:[
-    {c:'Google Ads',inv:600,leads:18,ventas:3,margen:9400},
-    {c:'Habitissimo',inv:250,leads:9,ventas:1,margen:2100},
-    {c:'Instagram',inv:150,leads:6,ventas:1,margen:1900},
-    {c:'Web y Google Business',inv:0,leads:11,ventas:2,margen:5200},
-    {c:'Referidos',inv:0,leads:4,ventas:2,margen:6300}
-  ],
-  done:new Set(), pres:[], nextPR:115, nextObra:312
-};
+const S = window.CRM_DEMO;
 
-/* ---- catálogo de partidas (tarifa de ejemplo) ----
-   q(p) = cantidad a partir de los parámetros; pr = [básica, media, alta] €/ud ; mat = lleva material */
+/* ---- plantillas de obra ----
+   id = clave estable de la partida; su precio [básica, media, alta] €/ud sale de CRM_TARIFA.partidas[id]
+   q(p) = cantidad a partir de los parámetros; mat = lleva material */
 const CAT = {
   bano:{params:[{k:'m2',n:'m² de suelo',v:5,step:.5},{k:'alto',n:'Altura de techo (m)',v:2.5,step:.05},{k:'sanit',n:'Nº de sanitarios',v:3,step:1},{k:'ducha',n:'Ducha o bañera',v:'ducha',opts:{ducha:'Plato de ducha',banera:'Bañera'}}],
     items:[
-      {cap:'Demolición',n:'Retirada de alicatado, solado y sanitarios',u:'m²',q:p=>p.m2+pared(p),pr:[16,16,16]},
-      {cap:'Demolición',n:'Gestión de residuos y contenedor',u:'pa',q:()=>1,pr:[280,280,280]},
-      {cap:'Instalaciones',n:'Fontanería completa de baño',u:'pa',q:()=>1,pr:[950,1150,1400],mat:1},
-      {cap:'Instalaciones',n:'Electricidad: puntos de luz y enchufes',u:'pa',q:()=>1,pr:[420,520,680],mat:1},
-      {cap:'Revestimientos',n:'Solado con material incluido',u:'m²',q:p=>p.m2,pr:[38,55,85],mat:1},
-      {cap:'Revestimientos',n:'Alicatado de paredes con material',u:'m²',q:p=>pared(p),pr:[34,48,75],mat:1},
-      {cap:'Equipamiento',n:p=>p.ducha==='banera'?'Bañera y grifería':'Plato de ducha y mampara',u:'ud',q:()=>1,pr:[520,780,1250],mat:1},
-      {cap:'Equipamiento',n:'Sanitarios y grifería',u:'ud',q:p=>Math.max(0,p.sanit-1),pr:[260,380,620],mat:1},
-      {cap:'Acabados',n:'Pintura de techo',u:'m²',q:p=>p.m2,pr:[12,12,14],mat:1},
-      {cap:'Acabados',n:'Limpieza final de obra',u:'pa',q:()=>1,pr:[150,150,150],opt:1}
-    ],plazo:'2-3 semanas'},
+      {id:'bano.demolicion',cap:'Demolición',n:'Retirada de alicatado, solado y sanitarios',u:'m²',q:p=>p.m2+pared(p)},
+      {id:'bano.residuos',cap:'Demolición',n:'Gestión de residuos y contenedor',u:'pa',q:()=>1},
+      {id:'bano.fontaneria',cap:'Instalaciones',n:'Fontanería completa de baño',u:'pa',q:()=>1,mat:1},
+      {id:'bano.electricidad',cap:'Instalaciones',n:'Electricidad: puntos de luz y enchufes',u:'pa',q:()=>1,mat:1},
+      {id:'bano.solado',cap:'Revestimientos',n:'Solado con material incluido',u:'m²',q:p=>p.m2,mat:1},
+      {id:'bano.alicatado',cap:'Revestimientos',n:'Alicatado de paredes con material',u:'m²',q:p=>pared(p),mat:1},
+      {id:'bano.ducha',cap:'Equipamiento',n:p=>p.ducha==='banera'?'Bañera y grifería':'Plato de ducha y mampara',u:'ud',q:()=>1,mat:1},
+      {id:'bano.sanitarios',cap:'Equipamiento',n:'Sanitarios y grifería',u:'ud',q:p=>Math.max(0,p.sanit-1),mat:1},
+      {id:'bano.pintura_techo',cap:'Acabados',n:'Pintura de techo',u:'m²',q:p=>p.m2,mat:1},
+      {id:'bano.limpieza',cap:'Acabados',n:'Limpieza final de obra',u:'pa',q:()=>1,opt:1}
+    ]},
   cocina:{params:[{k:'ml',n:'Metros lineales de muebles',v:4,step:.1},{k:'m2',n:'m² de suelo',v:9,step:.5},{k:'electro',n:'Electrodomésticos',v:'si',opts:{si:'Incluidos',no:'No incluidos'}}],
     items:[
-      {cap:'Demolición',n:'Desmontaje de cocina existente',u:'pa',q:()=>1,pr:[650,650,650]},
-      {cap:'Demolición',n:'Gestión de residuos y contenedor',u:'pa',q:()=>1,pr:[280,280,280]},
-      {cap:'Instalaciones',n:'Fontanería de cocina',u:'pa',q:()=>1,pr:[520,620,780],mat:1},
-      {cap:'Instalaciones',n:'Electricidad de cocina',u:'pa',q:()=>1,pr:[680,820,990],mat:1},
-      {cap:'Revestimientos',n:'Solado con material incluido',u:'m²',q:p=>p.m2,pr:[38,55,85],mat:1},
-      {cap:'Mobiliario',n:'Muebles de cocina montados',u:'ml',q:p=>p.ml,pr:[380,520,780],mat:1},
-      {cap:'Mobiliario',n:'Encimera',u:'ml',q:p=>p.ml,pr:[160,260,420],mat:1},
-      {cap:'Mobiliario',n:'Electrodomésticos (placa, horno, campana, fregadero)',u:'pa',q:p=>p.electro==='si'?1:0,pr:[1800,2600,3900],mat:1,opt:1},
-      {cap:'Acabados',n:'Pintura de paredes y techo',u:'m²',q:p=>Math.round(p.m2*3.8),pr:[9,9,11],mat:1},
-      {cap:'Acabados',n:'Limpieza final de obra',u:'pa',q:()=>1,pr:[150,150,150],opt:1}
-    ],plazo:'3-4 semanas'},
+      {id:'cocina.desmontaje',cap:'Demolición',n:'Desmontaje de cocina existente',u:'pa',q:()=>1},
+      {id:'cocina.residuos',cap:'Demolición',n:'Gestión de residuos y contenedor',u:'pa',q:()=>1},
+      {id:'cocina.fontaneria',cap:'Instalaciones',n:'Fontanería de cocina',u:'pa',q:()=>1,mat:1},
+      {id:'cocina.electricidad',cap:'Instalaciones',n:'Electricidad de cocina',u:'pa',q:()=>1,mat:1},
+      {id:'cocina.solado',cap:'Revestimientos',n:'Solado con material incluido',u:'m²',q:p=>p.m2,mat:1},
+      {id:'cocina.muebles',cap:'Mobiliario',n:'Muebles de cocina montados',u:'ml',q:p=>p.ml,mat:1},
+      {id:'cocina.encimera',cap:'Mobiliario',n:'Encimera',u:'ml',q:p=>p.ml,mat:1},
+      {id:'cocina.electrodomesticos',cap:'Mobiliario',n:'Electrodomésticos (placa, horno, campana, fregadero)',u:'pa',q:p=>p.electro==='si'?1:0,mat:1,opt:1},
+      {id:'cocina.pintura',cap:'Acabados',n:'Pintura de paredes y techo',u:'m²',q:p=>Math.round(p.m2*3.8),mat:1},
+      {id:'cocina.limpieza',cap:'Acabados',n:'Limpieza final de obra',u:'pa',q:()=>1,opt:1}
+    ]},
   pintura:{params:[{k:'m2',n:'m² de vivienda',v:80,step:1},{k:'techos',n:'Techos',v:'si',opts:{si:'Incluidos',no:'No'}},{k:'alisado',n:'Alisado de gotelé',v:'no',opts:{si:'Sí',no:'No'}}],
     items:[
-      {cap:'Preparación',n:'Protección de suelos y muebles',u:'pa',q:()=>1,pr:[180,180,180]},
-      {cap:'Preparación',n:'Alisado de paredes (gotelé)',u:'m²',q:p=>p.alisado==='si'?Math.round(p.m2*2.8):0,pr:[9,10,12],mat:1},
-      {cap:'Pintura',n:'Pintura plástica de paredes, dos manos',u:'m²',q:p=>Math.round(p.m2*2.8),pr:[7,9,12],mat:1},
-      {cap:'Pintura',n:'Pintura de techos',u:'m²',q:p=>p.techos==='si'?p.m2:0,pr:[6,7.5,9],mat:1},
-      {cap:'Acabados',n:'Limpieza final',u:'pa',q:()=>1,pr:[120,120,120],opt:1}
-    ],plazo:'1 semana'},
+      {id:'pintura.proteccion',cap:'Preparación',n:'Protección de suelos y muebles',u:'pa',q:()=>1},
+      {id:'pintura.alisado',cap:'Preparación',n:'Alisado de paredes (gotelé)',u:'m²',q:p=>p.alisado==='si'?Math.round(p.m2*2.8):0,mat:1},
+      {id:'pintura.paredes',cap:'Pintura',n:'Pintura plástica de paredes, dos manos',u:'m²',q:p=>Math.round(p.m2*2.8),mat:1},
+      {id:'pintura.techos',cap:'Pintura',n:'Pintura de techos',u:'m²',q:p=>p.techos==='si'?p.m2:0,mat:1},
+      {id:'pintura.limpieza',cap:'Acabados',n:'Limpieza final',u:'pa',q:()=>1,opt:1}
+    ]},
   integral:{params:[{k:'m2',n:'m² de vivienda',v:85,step:1},{k:'banos',n:'Nº de baños',v:1,step:1},{k:'cocina',n:'Cocina',v:'si',opts:{si:'Incluida',no:'No'}}],
     items:[
-      {cap:'Demolición',n:'Demolición general y retirada',u:'m²',q:p=>p.m2,pr:[45,45,45]},
-      {cap:'Demolición',n:'Gestión de residuos y contenedores',u:'pa',q:()=>1,pr:[900,900,900]},
-      {cap:'Albañilería',n:'Tabiquería y albañilería',u:'m²',q:p=>p.m2,pr:[70,85,100],mat:1},
-      {cap:'Instalaciones',n:'Fontanería general',u:'m²',q:p=>p.m2,pr:[55,65,80],mat:1},
-      {cap:'Instalaciones',n:'Instalación eléctrica nueva',u:'m²',q:p=>p.m2,pr:[60,75,95],mat:1},
-      {cap:'Revestimientos',n:'Solado con material incluido',u:'m²',q:p=>p.m2,pr:[38,55,85],mat:1},
-      {cap:'Estancias',n:'Baño completo',u:'ud',q:p=>p.banos,pr:[5200,6900,9500],mat:1},
-      {cap:'Estancias',n:'Cocina completa',u:'ud',q:p=>p.cocina==='si'?1:0,pr:[7800,10500,15500],mat:1},
-      {cap:'Carpintería',n:'Puertas de paso',u:'ud',q:p=>Math.max(1,Math.round(p.m2/12)),pr:[280,420,650],mat:1},
-      {cap:'Acabados',n:'Pintura de paredes y techos',u:'m²',q:p=>Math.round(p.m2*3.8),pr:[7,9,12],mat:1},
-      {cap:'Acabados',n:'Limpieza final de obra',u:'pa',q:()=>1,pr:[350,350,350],opt:1}
-    ],plazo:'8-10 semanas'}
+      {id:'integral.demolicion',cap:'Demolición',n:'Demolición general y retirada',u:'m²',q:p=>p.m2},
+      {id:'integral.residuos',cap:'Demolición',n:'Gestión de residuos y contenedores',u:'pa',q:()=>1},
+      {id:'integral.albanileria',cap:'Albañilería',n:'Tabiquería y albañilería',u:'m²',q:p=>p.m2,mat:1},
+      {id:'integral.fontaneria',cap:'Instalaciones',n:'Fontanería general',u:'m²',q:p=>p.m2,mat:1},
+      {id:'integral.electricidad',cap:'Instalaciones',n:'Instalación eléctrica nueva',u:'m²',q:p=>p.m2,mat:1},
+      {id:'integral.solado',cap:'Revestimientos',n:'Solado con material incluido',u:'m²',q:p=>p.m2,mat:1},
+      {id:'integral.bano',cap:'Estancias',n:'Baño completo',u:'ud',q:p=>p.banos,mat:1},
+      {id:'integral.cocina',cap:'Estancias',n:'Cocina completa',u:'ud',q:p=>p.cocina==='si'?1:0,mat:1},
+      {id:'integral.puertas',cap:'Carpintería',n:'Puertas de paso',u:'ud',q:p=>Math.max(1,Math.round(p.m2/12)),mat:1},
+      {id:'integral.pintura',cap:'Acabados',n:'Pintura de paredes y techos',u:'m²',q:p=>Math.round(p.m2*3.8),mat:1},
+      {id:'integral.limpieza',cap:'Acabados',n:'Limpieza final de obra',u:'pa',q:()=>1,opt:1}
+    ]}
 };
 function pared(p){ return Math.round(4*Math.sqrt(p.m2)*p.alto*10)/10; }
-const COSTE = .68; // coste interno ≈ 68 % del precio (ejemplo)
+const COSTE = TARIFA.coste;
 
 /* ---- plantillas WhatsApp ---- */
 const TPL = [
@@ -419,7 +381,7 @@ function lines(){
   const c = CAT[P.tipo]; const out=[];
   c.items.forEach((it,i)=>{
     const q0 = +it.q(P.params) || 0; if(q0<=0 && !P.over[i]) return;
-    const pr0 = it.pr[P.cal];
+    const pr0 = (TARIFA.partidas[it.id]||[])[P.cal];
     const o = P.over[i]||{};
     const q = o.q!==undefined ? o.q : Math.round(q0*10)/10;
     const pr = o.pr!==undefined ? o.pr : pr0;
@@ -474,7 +436,7 @@ function drawDoc(){
       <td class="n"><input class="in li-in num" type="number" step="1" min="0" data-pr="${x.i}" value="${x.pr}" aria-label="Precio unitario"></td>
       <td class="n num" data-imp="${x.i}">${eur2(x.imp)}</td></tr>`; }).join('');
   $('#doc').innerHTML = `
-    <div class="doc-head"><div><span class="ref">${P.num} · ${est?'ESTIMACIÓN PREVIA':'PRESUPUESTO'}</span><h2>${TIPOS[P.tipo]} · ${esc(P.cli.nombre||'Cliente sin nombre')}</h2><small class="muted">${esc(P.cli.dir||'Sin dirección')} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días · plazo estimado ${CAT[P.tipo].plazo}</small></div>
+    <div class="doc-head"><div><span class="ref">${P.num} · ${est?'ESTIMACIÓN PREVIA':'PRESUPUESTO'}</span><h2>${TIPOS[P.tipo]} · ${esc(P.cli.nombre||'Cliente sin nombre')}</h2><small class="muted">${esc(P.cli.dir||'Sin dirección')} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días · plazo estimado ${TARIFA.plazos[P.tipo]}</small></div>
     <div class="row"><button class="btn" id="d-view">${I.eye}Vista del cliente</button><button class="btn wa" id="d-wa">${I.wa}Enviar por WhatsApp</button></div></div>
     <p class="faint" style="font-size:12px;margin:0 0 10px">Todo se ha rellenado solo con la tarifa. Puedes cambiar cualquier cantidad o precio antes de enviarlo.</p>
     <div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Ud.</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th></tr></thead><tbody>${rows}</tbody></table></div>
@@ -502,7 +464,7 @@ function clientView(){
     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px"><div><h3>${EMPRESA.nombre}</h3><span class="cd-muted">${P.num} · ${fmtD(TODAY)} · válido ${EMPRESA.validez} días</span></div><div style="text-align:right"><b>${esc(P.cli.nombre||'Cliente')}</b><br><span class="cd-muted">${esc(P.cli.dir||'')}</span></div></div>
     <div class="tbl-wrap"><table><thead><tr><th>Concepto</th><th class="n">Cant.</th><th class="n">Importe</th></tr></thead><tbody>${L.map(x=>{let h='';if(x.cap!==cap){cap=x.cap;h+=`<tr class="cd-cap"><td colspan="3">${esc(cap)}</td></tr>`;}return h+`<tr><td>${esc(x.n)}</td><td class="n num">${x.q} ${x.u}</td><td class="n num">${eur2(x.imp)}</td></tr>`;}).join('')}</tbody></table></div>
     <div class="cd-total"><span>Total (IVA ${P.iva} % incl.)</span><span class="num">${est?`${eur(T.total*.9)} – ${eur(T.total*1.15)}`:eur2(T.total)}</span></div>
-    <p class="cd-muted" style="font-size:12.5px">Forma de pago: ${EMPRESA.hitos.map(h=>`${h.n.toLowerCase()} (${h.p} %)`).join(', ')}. Plazo estimado: ${CAT[P.tipo].plazo}.</p>
+    <p class="cd-muted" style="font-size:12.5px">Forma de pago: ${EMPRESA.hitos.map(h=>`${h.n.toLowerCase()} (${h.p} %)`).join(', ')}. Plazo estimado: ${TARIFA.plazos[P.tipo]}.</p>
     ${est?'<p class="cd-muted" style="font-size:12.5px"><b>Estimación orientativa.</b> El importe final se cierra después de la visita técnica.</p>':`
     <div class="accept"><b>Aceptar presupuesto</b>
       <input type="text" id="acc-n" placeholder="Escribe tu nombre completo" value="${esc(P.cli.nombre)}" aria-label="Nombre completo">
@@ -542,7 +504,7 @@ function aceptar(){
       <div class="node" id="n1"><div class="ic">▤</div><div><b>Obra ${obraId}</b><small>Se crea con las ${L.length} partidas aceptadas</small></div><span class="tag">ERP</span></div>
       <div class="fan">
         <div class="node" id="n2"><div class="ic">▣</div><div><b>Compras</b><small>${mats.length} materiales · ${eur(matPres)} estimado</small></div></div>
-        <div class="node" id="n3"><div class="ic">◷</div><div><b>Planificación</b><small>Rubén · inicio ${fmtD(inicio)}</small></div></div>
+        <div class="node" id="n3"><div class="ic">◷</div><div><b>Planificación</b><small>${esc(EMPRESA.tecnicos[0])} · inicio ${fmtD(inicio)}</small></div></div>
         <div class="node" id="n4"><div class="ic">€</div><div><b>Cobro</b><small>Solicitud de señal ${eur(senal)} + WhatsApp listo</small></div></div>
         <div class="node" id="n5"><div class="ic">◉</div><div><b>CRM</b><small>Cliente «en obra» y seguimiento agendado</small></div><span class="tag">CRM</span></div>
       </div>
@@ -555,7 +517,7 @@ function aceptar(){
     ['n0',`Firma: presupuesto ${prNum} aceptado`],
     ['n1',`ERP: obra ${obraId} creada`],
     ['n2',`Compras: lista de ${mats.length} materiales preparada`],
-    ['n3',`Planificación: Rubén propuesto, inicio ${fmtD(inicio)} (pendiente de confirmar)`],
+    ['n3',`Planificación: ${EMPRESA.tecnicos[0]} propuesto, inicio ${fmtD(inicio)} (pendiente de confirmar)`],
     ['n4',`Cobro: solicitud de señal ${eur(senal)} lista para enviar`],
     ['n5',`CRM: estado «en obra» · seguimiento agendado · aviso Telegram`]
   ];
@@ -718,16 +680,16 @@ function vAjustes(){
   const c=CAT[ajTipo];
   $('#view').innerHTML = `
   <section class="card pad"><h2 class="h2">Tarifa de partidas <small>de aquí sale el presupuesto automático · precios de ejemplo</small></h2>
-    <div class="row" style="margin-bottom:12px"><select class="in" id="aj-t" style="width:auto" aria-label="Tipo de obra">${Object.entries(TIPOS).map(([k,v])=>`<option value="${k}" ${ajTipo===k?'selected':''}>${v}</option>`).join('')}</select><span class="faint" style="font-size:12px">Plazo estimado: ${c.plazo}</span></div>
+    <div class="row" style="margin-bottom:12px"><select class="in" id="aj-t" style="width:auto" aria-label="Tipo de obra">${Object.entries(TIPOS).map(([k,v])=>`<option value="${k}" ${ajTipo===k?'selected':''}>${v}</option>`).join('')}</select><span class="faint" style="font-size:12px">Plazo estimado: ${TARIFA.plazos[ajTipo]}</span></div>
     <div class="tbl-wrap"><table><thead><tr><th>Capítulo</th><th>Partida</th><th>Ud.</th><th class="n">Básica</th><th class="n">Media</th><th class="n">Alta</th><th>Material</th></tr></thead>
-    <tbody>${c.items.map((it,i)=>`<tr><td class="muted">${esc(it.cap)}</td><td>${esc(typeof it.n==='function'?it.n(defParams(ajTipo)):it.n)}</td><td>${it.u}</td>${[0,1,2].map(q=>`<td class="n"><input class="in li-in num" type="number" min="0" step="1" data-aj="${i}:${q}" value="${it.pr[q]}" aria-label="Precio"></td>`).join('')}<td>${it.mat?'<span class="badge g">sí</span>':'<span class="badge n">no</span>'}</td></tr>`).join('')}</tbody></table></div>
+    <tbody>${c.items.map((it,i)=>`<tr><td class="muted">${esc(it.cap)}</td><td>${esc(typeof it.n==='function'?it.n(defParams(ajTipo)):it.n)}</td><td>${it.u}</td>${[0,1,2].map(q=>`<td class="n"><input class="in li-in num" type="number" min="0" step="1" data-aj="${i}:${q}" value="${(TARIFA.partidas[it.id]||[])[q]??''}" aria-label="Precio"></td>`).join('')}<td>${it.mat?'<span class="badge g">sí</span>':'<span class="badge n">no</span>'}</td></tr>`).join('')}</tbody></table></div>
   </section>
   <section class="card pad" style="margin-top:16px"><h2 class="h2">Plantillas de WhatsApp <small>${TPL.length} plantillas · editables</small></h2>
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">${TPL.map((t,i)=>`<label class="f">${esc(t.n)}<textarea class="in" data-tpl="${i}" style="min-height:96px">${esc(t.t)}</textarea></label>`).join('')}</div>
     <p class="faint" style="font-size:12px;margin:12px 0 0">Variables disponibles: {nombre} {empresa} {comercial} {tipo_obra} {fecha_visita} {hora_visita} {direccion} {tecnico} {enlace_presupuesto} {importe_hito} {concepto_pago} {num_factura} {enlace_factura} {vencimiento} {enlace_resena}</p>
   </section>`;
   $('#aj-t').onchange=e=>{ajTipo=e.target.value;vAjustes();};
-  $$('[data-aj]').forEach(i=>i.oninput=()=>{ const [a,q]=i.dataset.aj.split(':').map(Number); CAT[ajTipo].items[a].pr[q]=parseFloat(i.value)||0; });
+  $$('[data-aj]').forEach(i=>i.oninput=()=>{ const [a,q]=i.dataset.aj.split(':').map(Number); const id=CAT[ajTipo].items[a].id; (TARIFA.partidas[id]=TARIFA.partidas[id]||[])[q]=parseFloat(i.value)||0; });
   $$('[data-tpl]').forEach(t=>t.oninput=()=>{ TPL[+t.dataset.tpl].t=t.value; });
 }
 
@@ -745,6 +707,18 @@ document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&$('#ov')) closeMod
 window.addEventListener('resize',()=>{ if($('#flow')) drawFlowLines(); });
 
 /* =================== arranque =================== */
+const rootStyle = document.documentElement.style;
+Object.entries({p:'--p',p2:'--p2',pDark:'--p-dark',g:'--g',gDark:'--g-dark'}).forEach(([k,v])=>{ if(EMPRESA.colores&&EMPRESA.colores[k]) rootStyle.setProperty(v, EMPRESA.colores[k]); });
+$('.brand .mark').textContent = EMPRESA.siglas;
+$('.brand b').textContent = EMPRESA.nombre;
+const faltan = Object.values(CAT).flatMap(c=>c.items).filter(it=>{ const pr=TARIFA.partidas[it.id]; return !Array.isArray(pr)||pr.length<3||pr.some(v=>typeof v!=='number'||!isFinite(v)); }).map(it=>it.id);
+if(faltan.length){
+  const msgs = faltan.map(id=>`Falta el precio de la partida ${id} en config/tarifa.js`);
+  msgs.forEach(m=>console.error(m));
+  const av = document.createElement('div'); av.className='note'; av.setAttribute('role','alert'); av.style.margin='16px';
+  av.innerHTML = msgs.map(m=>`<b>${esc(m)}</b>`).join('<br>');
+  $('.app').before(av);
+}
 const start = (location.hash||'').slice(1);
 go(VIEWS.some(v=>v.id===start)?start:'hoy');
 })();

@@ -1,4 +1,4 @@
-@font-face{font-family:'Sora';font-style:normal;font-weight:100 800;font-display:swap;src:url('fonts/sora-latin-var.woff2') format('woff2-variations'),url('fonts/sora-latin-var.woff2') format('woff2')}
+@font-face{font-family:'Sora';font-style:normal;font-weight:100 800;font-display:swap;src:url('../fonts/sora-latin-var.woff2') format('woff2-variations'),url('../fonts/sora-latin-var.woff2') format('woff2')}
 
 :root{
   color-scheme:dark;
